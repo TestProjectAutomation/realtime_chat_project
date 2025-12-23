@@ -1,20 +1,75 @@
-// Chat Application JavaScript
+// static/js/chat.js - Chat Room Class
 
-class ChatApp {
-    constructor() {
+class ChatRoom {
+    constructor(config) {
+        this.roomId = config.roomId;
+        this.roomType = config.roomType;
+        this.currentUserId = config.currentUserId;
+        this.isGroupChat = config.isGroupChat;
+        this.csrfToken = config.csrfToken;
+        
         this.socket = null;
-        this.currentRoom = null;
         this.typingTimeout = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 3000;
+        
+        this.typingUsers = new Set();
+        this.unreadMessages = new Set();
+        
         this.init();
     }
 
     init() {
-        this.initEventListeners();
-        this.initWebSocket();
-        this.initNotifications();
+        this.connectWebSocket();
+        this.bindEvents();
+        this.setupMessageHandlers();
+        this.setupNotifications();
+        this.scrollToBottom();
     }
 
-    initEventListeners() {
+    connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/chat/${this.roomId}/`;
+        
+        console.log(`Connecting to WebSocket: ${wsUrl}`);
+        
+        try {
+            this.socket = new WebSocket(wsUrl);
+            
+            this.socket.onopen = () => {
+                console.log('WebSocket connected successfully');
+                this.reconnectAttempts = 0;
+                this.updateConnectionStatus(true);
+            };
+            
+            this.socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    this.handleWebSocketMessage(data);
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            };
+            
+            this.socket.onclose = (event) => {
+                console.log(`WebSocket disconnected: ${event.code} - ${event.reason}`);
+                this.updateConnectionStatus(false);
+                this.handleReconnection();
+            };
+            
+            this.socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.updateConnectionStatus(false);
+            };
+            
+        } catch (error) {
+            console.error('Error creating WebSocket:', error);
+            this.handleReconnection();
+        }
+    }
+
+    bindEvents() {
         // Message form submission
         const messageForm = document.getElementById('message-form');
         if (messageForm) {
@@ -25,156 +80,43 @@ class ChatApp {
         const messageInput = document.getElementById('message-input');
         if (messageInput) {
             messageInput.addEventListener('input', () => this.handleTyping());
+            messageInput.addEventListener('blur', () => this.stopTyping());
         }
 
-        // Theme toggle
-        const themeToggle = document.getElementById('theme-toggle');
-        if (themeToggle) {
-            themeToggle.addEventListener('click', () => this.toggleTheme());
-        }
-
-        // Language switcher
-        const languageSelect = document.getElementById('language-select');
-        if (languageSelect) {
-            languageSelect.addEventListener('change', (e) => this.changeLanguage(e.target.value));
-        }
-
-        // Mobile menu toggle
-        const mobileMenuButton = document.getElementById('mobile-menu-button');
-        if (mobileMenuButton) {
-            mobileMenuButton.addEventListener('click', () => this.toggleMobileMenu());
-        }
+        // Message status updates
+        this.setupMessageStatus();
     }
 
-    initWebSocket() {
-        const roomId = document.currentScript?.getAttribute('data-room-id');
-        if (!roomId) return;
+    setupMessageHandlers() {
+        // Message deletion
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.message-delete-btn')) {
+                const messageId = e.target.closest('.message-item').dataset.messageId;
+                this.deleteMessage(messageId);
+            }
+        });
 
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/chat/${roomId}/`;
-
-        this.socket = new WebSocket(wsUrl);
-        this.currentRoom = roomId;
-
-        this.socket.onopen = () => {
-            console.log('WebSocket connected');
-            this.updateUserStatus(true);
-        };
-
-        this.socket.onmessage = (event) => {
-            this.handleWebSocketMessage(JSON.parse(event.data));
-        };
-
-        this.socket.onclose = () => {
-            console.log('WebSocket disconnected. Reconnecting...');
-            setTimeout(() => this.initWebSocket(), 3000);
-            this.updateUserStatus(false);
-        };
-
-        this.socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
+        // Message reactions
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.message-reaction-btn')) {
+                const messageId = e.target.closest('.message-item').dataset.messageId;
+                this.showReactionPicker(messageId);
+            }
+        });
     }
 
-    initNotifications() {
+    setupNotifications() {
         // Request notification permission
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
-
-        // Connect to notification WebSocket
-        this.connectNotificationSocket();
     }
 
-    connectNotificationSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/notifications/`;
-
-        const notificationSocket = new WebSocket(wsUrl);
-
-        notificationSocket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            this.showNotification(data);
-        };
-    }
-
-    handleWebSocketMessage(data) {
-        switch (data.type) {
-            case 'chat_message':
-                this.addMessage(data);
-                break;
-            case 'typing':
-                this.showTypingIndicator(data);
-                break;
-            case 'user_status':
-                this.updateUserStatusDisplay(data);
-                break;
-            case 'read_receipt':
-                this.updateReadReceipt(data);
-                break;
-            case 'notification':
-                this.showNotification(data);
-                break;
-        }
-    }
-
-    addMessage(data) {
-        const messagesContainer = document.getElementById('chat-messages');
-        if (!messagesContainer) return;
-
-        const messageElement = this.createMessageElement(data);
-        messagesContainer.appendChild(messageElement);
-        this.scrollToBottom();
-
-        // Mark as read if not sent by current user
-        if (data.sender_id != this.getCurrentUserId()) {
-            this.sendReadReceipt(data.message_id);
-        }
-
-        // Show notification for new messages when not focused
-        if (data.sender_id != this.getCurrentUserId() && !document.hasFocus()) {
-            this.showDesktopNotification(data);
-        }
-    }
-
-    createMessageElement(data) {
-        const isSent = data.sender_id == this.getCurrentUserId();
-        const isGroup = document.currentScript?.getAttribute('data-room-type') === 'group';
-        
-        const div = document.createElement('div');
-        div.className = `flex ${isSent ? 'justify-end' : 'justify-start'}`;
-        
-        div.innerHTML = `
-            <div class="message-bubble px-4 py-3 ${isSent ? 'message-sent' : 'message-received'}">
-                ${!isSent && isGroup ? `
-                    <div class="font-semibold text-xs mb-1 opacity-75">
-                        ${data.sender}
-                    </div>
-                ` : ''}
-                <div class="mb-1">${this.escapeHtml(data.content).replace(/\n/g, '<br>')}</div>
-                <div class="text-xs opacity-75 flex items-center space-x-2">
-                    <span>${new Date(data.timestamp).toLocaleTimeString()}</span>
-                    ${isSent ? '<i class="fas fa-check text-gray-400"></i>' : ''}
-                </div>
-            </div>
-        `;
-        
-        return div;
-    }
-
-    showTypingIndicator(data) {
-        const indicator = document.getElementById('typing-indicator');
-        if (!indicator) return;
-
-        if (data.is_typing && data.user_id != this.getCurrentUserId()) {
-            indicator.classList.remove('hidden');
-            indicator.classList.add('flex');
-        } else {
-            indicator.classList.remove('flex');
-            indicator.classList.add('hidden');
-        }
-        
-        this.scrollToBottom();
+    setupMessageStatus() {
+        // Update message status indicators
+        setInterval(() => {
+            this.updateMessageStatus();
+        }, 30000); // Every 30 seconds
     }
 
     handleMessageSubmit(e) {
@@ -183,180 +125,365 @@ class ChatApp {
         const input = document.getElementById('message-input');
         const message = input.value.trim();
         
-        if (message && this.socket) {
+        if (message && this.socket && this.socket.readyState === WebSocket.OPEN) {
+            // Show sending status
+            this.showMessageStatus('Sending...', 'info');
+            
+            // Send message
             this.socket.send(JSON.stringify({
                 type: 'chat_message',
-                message: message
+                message: message,
+                timestamp: new Date().toISOString()
             }));
             
+            // Clear input
             input.value = '';
+            input.style.height = 'auto';
             
             // Clear typing indicator
-            clearTimeout(this.typingTimeout);
-            this.socket.send(JSON.stringify({
-                type: 'typing',
-                is_typing: false
-            }));
+            this.stopTyping();
+            
+            // Update send button
+            document.getElementById('send-btn').disabled = true;
+            
+            // Hide status after delay
+            setTimeout(() => {
+                this.hideMessageStatus();
+            }, 2000);
+            
+        } else if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+            this.showMessageStatus('Connection lost. Please wait...', 'error');
         }
     }
 
     handleTyping() {
-        if (!this.socket) return;
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
         
         clearTimeout(this.typingTimeout);
         
+        // Send typing indicator
         this.socket.send(JSON.stringify({
             type: 'typing',
             is_typing: true
         }));
         
+        // Set timeout to stop typing indicator
         this.typingTimeout = setTimeout(() => {
-            this.socket.send(JSON.stringify({
-                type: 'typing',
-                is_typing: false
-            }));
+            this.stopTyping();
         }, 1000);
     }
 
+    stopTyping() {
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+        
+        clearTimeout(this.typingTimeout);
+        
+        this.socket.send(JSON.stringify({
+            type: 'typing',
+            is_typing: false
+        }));
+    }
+
+    handleWebSocketMessage(data) {
+        switch(data.type) {
+            case 'chat_message':
+                this.addMessage(data);
+                break;
+                
+            case 'typing':
+                this.handleTypingIndicator(data);
+                break;
+                
+            case 'user_status':
+                this.updateUserStatus(data);
+                break;
+                
+            case 'read_receipt':
+                this.handleReadReceipt(data);
+                break;
+                
+            case 'message_deleted':
+                this.handleMessageDeleted(data);
+                break;
+                
+            case 'message_edited':
+                this.handleMessageEdited(data);
+                break;
+                
+            case 'connection_status':
+                this.handleConnectionStatus(data);
+                break;
+        }
+    }
+
+    addMessage(data) {
+        const messagesContainer = document.getElementById('chat-messages');
+        if (!messagesContainer) return;
+
+        const isSent = data.sender_id == this.currentUserId;
+        
+        // Create message element
+        const messageElement = this.createMessageElement(data, isSent);
+        
+        // Add to container
+        if (isSent) {
+            // Find the last sent message and insert after it
+            const lastSent = messagesContainer.querySelector('.message-sent-item:last-child');
+            if (lastSent) {
+                lastSent.after(messageElement);
+            } else {
+                messagesContainer.appendChild(messageElement);
+            }
+        } else {
+            messagesContainer.appendChild(messageElement);
+            
+            // Add to unread messages if not current user
+            if (!isSent) {
+                this.unreadMessages.add(data.message_id);
+                this.updateUnreadCount();
+            }
+        }
+        
+        // Scroll to bottom
+        this.scrollToBottom();
+        
+        // Send read receipt if not sent by current user
+        if (!isSent) {
+            this.sendReadReceipt(data.message_id);
+        }
+        
+        // Show notification for new messages
+        if (!isSent && !document.hasFocus()) {
+            this.showDesktopNotification(data);
+        }
+    }
+
+    createMessageElement(data, isSent) {
+        const div = document.createElement('div');
+        div.className = `message-item ${isSent ? 'message-sent-item' : 'message-received-item'}`;
+        div.dataset.messageId = data.message_id;
+        div.dataset.senderId = data.sender_id;
+        
+        let senderHtml = '';
+        if (!isSent && this.isGroupChat) {
+            senderHtml = `
+                <div class="flex items-center space-x-2 mb-1">
+                    <div class="w-6 h-6 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center">
+                        <span class="text-white text-xs font-bold">
+                            ${this.escapeHtml(data.sender.charAt(0).toUpperCase())}
+                        </span>
+                    </div>
+                    <span class="font-semibold text-xs text-gray-700 dark:text-gray-300">
+                        ${this.escapeHtml(data.sender)}
+                    </span>
+                </div>
+            `;
+        }
+        
+        const time = new Date(data.timestamp).toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+        
+        div.innerHTML = `
+            <div class="flex ${isSent ? 'justify-end' : 'justify-start'}">
+                <div class="max-w-[70%] md:max-w-[60%]">
+                    ${senderHtml}
+                    <div class="message-bubble px-4 py-3 ${isSent ? 'message-sent' : 'message-received'}">
+                        <div class="mb-1 whitespace-pre-wrap">${this.escapeHtml(data.content).replace(/\n/g, '<br>')}</div>
+                        <div class="flex items-center justify-between mt-2">
+                            <span class="text-xs opacity-75">
+                                ${time}
+                            </span>
+                            ${isSent ? 
+                                '<div class="flex items-center space-x-1 ml-2">' +
+                                    '<i class="fas fa-check text-gray-400" title="Sent"></i>' +
+                                '</div>' : 
+                                ''
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        return div;
+    }
+
+    handleTypingIndicator(data) {
+        const indicator = document.getElementById('typing-indicator');
+        if (!indicator) return;
+
+        if (data.is_typing) {
+            this.typingUsers.add(data.user_id);
+        } else {
+            this.typingUsers.delete(data.user_id);
+        }
+
+        if (this.typingUsers.size > 0) {
+            // Show typing indicator
+            indicator.classList.remove('hidden');
+            indicator.classList.add('flex');
+            
+            // Update typing text
+            const typingText = indicator.querySelector('.typing-text');
+            if (typingText) {
+                const names = Array.from(this.typingUsers).map(id => 
+                    id === data.user_id ? data.username : 'Someone'
+                );
+                typingText.textContent = `${names.join(', ')} ${names.length > 1 ? 'are' : 'is'} typing...`;
+            }
+        } else {
+            // Hide typing indicator
+            indicator.classList.remove('flex');
+            indicator.classList.add('hidden');
+        }
+    }
+
     sendReadReceipt(messageId) {
-        if (this.socket) {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify({
                 type: 'read_receipt',
                 message_id: messageId
             }));
+            
+            // Remove from unread messages
+            this.unreadMessages.delete(messageId);
+            this.updateUnreadCount();
         }
     }
 
-    updateUserStatus(online) {
-        // Update status via API
-        fetch('/api/user/status/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': this.getCsrfToken(),
-            },
-            body: JSON.stringify({ online: online })
-        });
-    }
-
-    updateUserStatusDisplay(data) {
-        // Update user status in UI
-        const userElements = document.querySelectorAll(`[data-user-id="${data.user_id}"] .status-indicator`);
-        userElements.forEach(element => {
-            if (data.online) {
-                element.className = 'status-indicator w-3 h-3 bg-green-500 rounded-full';
-            } else {
-                element.className = 'status-indicator w-3 h-3 bg-gray-400 rounded-full';
+    handleReadReceipt(data) {
+        // Update message read status in UI
+        const messageElement = document.querySelector(`[data-message-id="${data.message_id}"]`);
+        if (messageElement && data.user_id !== this.currentUserId) {
+            const checkIcon = messageElement.querySelector('.fa-check');
+            if (checkIcon) {
+                checkIcon.className = 'fas fa-check-double text-blue-400';
+                checkIcon.title = 'Read by ' + data.username;
             }
-        });
+        }
     }
 
-    updateReadReceipt(data) {
-        // Update message read status
-        const messageElement = document.querySelector(`[data-message-id="${data.message_id}"] .read-status`);
+    updateUserStatus(data) {
+        // Update user online status in sidebar
+        const userElement = document.querySelector(`[data-user-id="${data.user_id}"] .status-dot`);
+        if (userElement) {
+            if (data.online) {
+                userElement.className = 'status-dot w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800';
+                userElement.title = 'Online';
+            } else {
+                userElement.className = 'status-dot w-3 h-3 bg-gray-400 rounded-full border-2 border-white dark:border-gray-800';
+                userElement.title = 'Offline';
+            }
+        }
+    }
+
+    deleteMessage(messageId) {
+        if (confirm('Are you sure you want to delete this message?')) {
+            if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                this.socket.send(JSON.stringify({
+                    type: 'delete_message',
+                    message_id: messageId
+                }));
+            }
+        }
+    }
+
+    handleMessageDeleted(data) {
+        const messageElement = document.querySelector(`[data-message-id="${data.message_id}"]`);
         if (messageElement) {
-            messageElement.innerHTML = '<i class="fas fa-check-double text-blue-300"></i>';
+            messageElement.innerHTML = `
+                <div class="flex justify-center">
+                    <div class="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm text-gray-500 dark:text-gray-400">
+                        <i class="fas fa-trash mr-1"></i>
+                        Message deleted
+                    </div>
+                </div>
+            `;
+            messageElement.classList.add('opacity-50');
         }
     }
 
-    showNotification(data) {
-        // Show browser notification
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(data.title || 'New Message', {
-                body: data.message,
-                icon: data.icon || '/static/images/logo.png'
-            });
+    updateConnectionStatus(connected) {
+        const statusElement = document.getElementById('connection-status');
+        if (statusElement) {
+            if (connected) {
+                statusElement.innerHTML = '<i class="fas fa-wifi text-green-500 mr-1"></i> Connected';
+                statusElement.className = 'text-xs text-green-600';
+            } else {
+                statusElement.innerHTML = '<i class="fas fa-wifi-slash text-red-500 mr-1"></i> Connecting...';
+                statusElement.className = 'text-xs text-red-600';
+            }
         }
-
-        // Show in-app notification
-        this.showInAppNotification(data);
     }
 
-    showInAppNotification(data) {
-        const container = document.getElementById('notification-container');
-        if (!container) return;
+    handleReconnection() {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${this.reconnectDelay}ms`);
+            
+            setTimeout(() => {
+                this.connectWebSocket();
+            }, this.reconnectDelay);
+            
+            // Increase delay for next attempt
+            this.reconnectDelay *= 1.5;
+        } else {
+            console.error('Max reconnection attempts reached');
+            this.showMessageStatus('Unable to connect. Please refresh the page.', 'error');
+        }
+    }
 
-        const notification = document.createElement('div');
-        notification.className = 'notification bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 mb-2 border-l-4 border-primary-500';
-        notification.innerHTML = `
-            <div class="flex items-center">
-                <div class="flex-shrink-0">
-                    <img src="${data.avatar || 'https://via.placeholder.com/40'}" 
-                         class="w-10 h-10 rounded-full" alt="${data.sender}">
-                </div>
-                <div class="ml-3">
-                    <p class="text-sm font-medium text-gray-900 dark:text-white">${data.sender}</p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">${data.message}</p>
-                </div>
-            </div>
-        `;
+    showMessageStatus(text, type = 'info') {
+        const statusElement = document.getElementById('message-status');
+        const statusText = document.getElementById('status-text');
+        
+        if (statusElement && statusText) {
+            statusText.textContent = text;
+            statusElement.className = `mt-2 text-xs ${type === 'error' ? 'text-red-600' : 'text-blue-600'}`;
+            statusElement.classList.remove('hidden');
+        }
+    }
 
-        container.appendChild(notification);
-
-        // Auto-remove after 5 seconds
-        setTimeout(() => {
-            notification.remove();
-        }, 5000);
+    hideMessageStatus() {
+        const statusElement = document.getElementById('message-status');
+        if (statusElement) {
+            statusElement.classList.add('hidden');
+        }
     }
 
     showDesktopNotification(data) {
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(`${data.sender}:`, {
-                body: data.content,
+        if ('Notification' in window && Notification.permission === 'granted' && !document.hasFocus()) {
+            const notification = new Notification(`${data.sender}:`, {
+                body: data.content.length > 100 ? data.content.substring(0, 100) + '...' : data.content,
                 icon: '/static/images/notification-icon.png',
                 tag: 'chat-notification'
             });
+            
+            notification.onclick = () => {
+                window.focus();
+                notification.close();
+            };
         }
     }
 
-    toggleTheme() {
-        const html = document.documentElement;
-        html.classList.toggle('dark');
-        
-        // Save preference
-        fetch('/api/user/theme/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': this.getCsrfToken(),
-            },
-            body: JSON.stringify({
-                theme: html.classList.contains('dark') ? 'dark' : 'light'
-            })
-        });
-    }
-
-    changeLanguage(lang) {
-        fetch('/i18n/setlang/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-CSRFToken': this.getCsrfToken(),
-            },
-            body: `language=${lang}`
-        }).then(() => {
-            window.location.reload();
-        });
-    }
-
-    toggleMobileMenu() {
-        const menu = document.getElementById('mobile-menu');
-        menu.classList.toggle('hidden');
+    updateUnreadCount() {
+        // Update unread count in tab title
+        if (this.unreadMessages.size > 0) {
+            document.title = `(${this.unreadMessages.size}) ${document.title.replace(/^\(\d+\)\s*/, '')}`;
+        } else {
+            document.title = document.title.replace(/^\(\d+\)\s*/, '');
+        }
     }
 
     scrollToBottom() {
         const container = document.getElementById('chat-messages');
         if (container) {
-            container.scrollTop = container.scrollHeight;
+            setTimeout(() => {
+                container.scrollTop = container.scrollHeight;
+            }, 100);
         }
-    }
-
-    getCsrfToken() {
-        return document.querySelector('[name=csrfmiddlewaretoken]')?.value;
-    }
-
-    getCurrentUserId() {
-        return parseInt(document.currentScript?.getAttribute('data-user-id') || '0');
     }
 
     escapeHtml(text) {
@@ -364,34 +491,9 @@ class ChatApp {
         div.textContent = text;
         return div.innerHTML;
     }
-
-    // Utility functions
-    formatTime(date) {
-        return new Date(date).toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-        });
-    }
-
-    formatDate(date) {
-        const now = new Date();
-        const messageDate = new Date(date);
-        
-        if (now.toDateString() === messageDate.toDateString()) {
-            return 'Today';
-        }
-        
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (yesterday.toDateString() === messageDate.toDateString()) {
-            return 'Yesterday';
-        }
-        
-        return messageDate.toLocaleDateString();
-    }
 }
 
-// Initialize the chat app when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    window.chatApp = new ChatApp();
-});
+// Export for global use
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ChatRoom;
+}

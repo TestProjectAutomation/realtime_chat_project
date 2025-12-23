@@ -1,231 +1,703 @@
 {% extends 'base.html' %}
 {% load i18n static %}
 
-{% block title %}{% trans "Chat Dashboard" %}{% endblock %}
+{% block title %}{% trans "Chat Dashboard" %} - Real-Time Messenger{% endblock %}
+
+{% block extra_css %}
+<style>
+    .gradient-bg {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .glass-card {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .chat-card-hover {
+        transition: all 0.3s ease;
+    }
+    
+    .chat-card-hover:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+    
+    .status-indicator {
+        transition: all 0.3s ease;
+    }
+    
+    .scrollbar-custom {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+    }
+    
+    .scrollbar-custom::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .scrollbar-custom::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    
+    .scrollbar-custom::-webkit-scrollbar-thumb {
+        background-color: rgba(156, 163, 175, 0.5);
+        border-radius: 20px;
+    }
+    
+    .avatar-gradient {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .online-pulse {
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+        }
+        70% {
+            box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+        }
+    }
+    
+    .typing-animation span {
+        animation: typing 1.4s infinite;
+        margin: 0 1px;
+    }
+    
+    @keyframes typing {
+        0%, 60%, 100% { 
+            transform: translateY(0);
+            opacity: 0.6;
+        }
+        30% { 
+            transform: translateY(-4px);
+            opacity: 1;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8">
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <!-- Sidebar -->
-        <div class="lg:col-span-1 space-y-6">
-            <!-- User Profile Card -->
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                <div class="flex items-center space-x-4">
-                    <div class="relative">
-                        <img src="{{ profile.profile_picture.url|default:'https://via.placeholder.com/50' }}" 
-                             alt="{{ request.user.username }}" 
-                             class="w-12 h-12 rounded-full object-cover">
-                        {% if profile.is_online %}
-                            <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
-                        {% endif %}
-                    </div>
-                    <div>
-                        <h3 class="font-semibold text-gray-900 dark:text-white">{{ request.user.get_full_name|default:request.user.username }}</h3>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
-                            {% if profile.is_online %}
-                                <span class="text-green-500">●</span> {% trans "Online" %}
-                            {% else %}
-                                <span class="text-gray-400">●</span> {% trans "Last seen" %} {{ profile.last_seen|timesince }} {% trans "ago" %}
-                            {% endif %}
-                        </p>
-                    </div>
-                </div>
-                
-                <div class="mt-6 space-y-3">
-                    <button onclick="toggleTheme()" 
-                            class="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">
-                        <i class="fas fa-moon"></i>
-                        <span>{% trans "Toggle Theme" %}</span>
-                    </button>
-                    
-                    <a href="{% url 'chat:update_profile' %}" 
-                       class="block w-full text-center px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors">
-                        {% trans "Edit Profile" %}
-                    </a>
-                    
-                    <a href="{% url 'chat:create_group_chat' %}" 
-                       class="block w-full text-center px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors">
-                        <i class="fas fa-users mr-2"></i>
-                        {% trans "New Group" %}
-                    </a>
-                </div>
+<!-- Dashboard Container -->
+<div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between mb-8">
+            <div>
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
+                    {% trans "Messages" %}
+                </h1>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">
+                    {% trans "Stay connected with your conversations" %}
+                </p>
             </div>
             
-            <!-- Chat Rooms -->
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg">
-                <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-                    <h3 class="font-semibold text-gray-900 dark:text-white">{% trans "Chats" %}</h3>
+            <!-- Quick Actions -->
+            <div class="flex items-center space-x-3 mt-4 md:mt-0">
+                <!-- Search -->
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="fas fa-search text-gray-400"></i>
+                    </div>
+                    <input type="text" 
+                           placeholder="{% trans 'Search chats...' %}" 
+                           class="pl-10 pr-4 py-2 w-full md:w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent">
                 </div>
                 
-                <div class="divide-y divide-gray-200 dark:divide-gray-700 max-h-[500px] overflow-y-auto scrollbar-thin">
-                    {% for room in chat_rooms %}
-                        <a href="{% url 'chat:room_detail' room.id %}" 
-                           class="flex items-center p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors {% if request.path == room.get_absolute_url %}bg-gray-50 dark:bg-gray-700{% endif %}">
-                            <div class="flex-shrink-0 relative">
-                                {% if room.room_type == 'direct' %}
-                                    {% with other_user=room.get_other_participant request.user %}
-                                        {% if other_user %}
-                                            <img src="{{ other_user.profile.profile_picture.url|default:'https://via.placeholder.com/40' }}" 
-                                                 alt="{{ other_user.username }}" 
-                                                 class="w-10 h-10 rounded-full object-cover">
-                                            {% if other_user.profile.is_online %}
-                                                <div class="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full border border-white dark:border-gray-800"></div>
-                                            {% endif %}
-                                        {% else %}
-                                            <div class="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                                                <i class="fas fa-user text-gray-500 dark:text-gray-400"></i>
-                                            </div>
-                                        {% endif %}
-                                    {% endwith %}
+                <!-- New Chat Button -->
+                <a href="{% url 'chat:create_group_chat' %}" 
+                   class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white rounded-xl transition-all duration-300 transform hover:-translate-y-0.5 shadow-lg hover:shadow-xl">
+                    <i class="fas fa-plus"></i>
+                    <span class="hidden md:inline">{% trans "New Chat" %}</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- Left Sidebar -->
+            <div class="lg:col-span-1 space-y-6">
+                <!-- User Profile Card -->
+                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <!-- Profile Header -->
+                    <div class="relative h-32 bg-gradient-to-r from-primary-500 to-primary-600">
+                        <div class="absolute -bottom-10 left-1/2 transform -translate-x-1/2">
+                            <div class="relative">
+                                {% if profile.profile_picture %}
+                                    <img src="{{ profile.profile_picture.url }}" 
+                                         alt="{{ request.user.username }}" 
+                                         class="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 object-cover shadow-lg">
                                 {% else %}
-                                    <div class="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-                                        <i class="fas fa-users text-primary-600 dark:text-primary-400"></i>
+                                    <div class="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                                        <span class="text-white text-2xl font-bold">
+                                            {{ request.user.username|first|upper }}
+                                        </span>
                                     </div>
                                 {% endif %}
+                                
+                                <!-- Online Status -->
+                                <div class="absolute bottom-0 right-0">
+                                    {% if profile.is_online %}
+                                        <div class="w-5 h-5 bg-green-500 rounded-full border-3 border-white dark:border-gray-800 online-pulse"></div>
+                                    {% else %}
+                                        <div class="w-5 h-5 bg-gray-400 rounded-full border-3 border-white dark:border-gray-800"></div>
+                                    {% endif %}
+                                </div>
                             </div>
-                            
-                            <div class="flex-1 ml-4 min-w-0">
-                                <div class="flex justify-between items-center">
-                                    <p class="font-medium text-gray-900 dark:text-white truncate">
-                                        {% if room.room_type == 'direct' %}
-                                            {% with other_user=room.get_other_participant request.user %}
-                                                {% if other_user %}
-                                                    {{ other_user.get_full_name|default:other_user.username }}
-                                                {% else %}
-                                                    {% trans "Unknown User" %}
-                                                {% endif %}
-                                            {% endwith %}
-                                        {% else %}
-                                            {{ room.name|default:"Group Chat" }}
-                                        {% endif %}
-                                    </p>
-                                    {% if room.last_message_time %}
-                                        <span class="text-xs text-gray-500 dark:text-gray-400">
-                                            {{ room.last_message_time|timesince }} {% trans "ago" %}
-                                        </span>
+                        </div>
+                    </div>
+                    
+                    <!-- Profile Info -->
+                    <div class="pt-12 pb-6 px-6 text-center">
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white">
+                            {{ request.user.get_full_name|default:request.user.username }}
+                        </h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            @{{ request.user.username }}
+                        </p>
+                        
+                        <!-- Status Info -->
+                        <div class="mt-4">
+                            {% if profile.is_online %}
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                    <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                    {% trans "Online" %}
+                                </span>
+                            {% else %}
+                                <p class="text-sm text-gray-500 dark:text-gray-400">
+                                    <i class="fas fa-clock mr-1"></i>
+                                    {% trans "Last seen" %} {{ profile.last_seen|timesince }} {% trans "ago" %}
+                                </p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Profile Actions -->
+                    <div class="border-t border-gray-200 dark:border-gray-700 p-4 space-y-2">
+                        <a href="{% url 'chat:update_profile' %}" 
+                           class="flex items-center justify-center space-x-2 px-4 py-3 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-xl transition-colors">
+                            <i class="fas fa-user-edit text-primary-500"></i>
+                            <span class="font-medium text-gray-700 dark:text-gray-300">{% trans "Edit Profile" %}</span>
+                        </a>
+                        
+                        <button onclick="toggleTheme()" 
+                                class="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-xl transition-colors">
+                            <i class="fas fa-moon text-yellow-500"></i>
+                            <span class="font-medium text-gray-700 dark:text-gray-300">{% trans "Theme" %}</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Statistics Card -->
+                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 border border-gray-200 dark:border-gray-700">
+                    <h3 class="font-semibold text-gray-900 dark:text-white mb-4">{% trans "Statistics" %}</h3>
+                    
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                                    <i class="fas fa-comments text-blue-600 dark:text-blue-400"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">{% trans "Total Chats" %}</p>
+                                    <p class="font-bold text-gray-900 dark:text-white">{{ chat_rooms.count }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900 flex items-center justify-center">
+                                    <i class="fas fa-user-friends text-green-600 dark:text-green-400"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">{% trans "Contacts" %}</p>
+                                    <p class="font-bold text-gray-900 dark:text-white">{{ other_users.count }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Contacts -->
+                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 border border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">{% trans "Quick Contacts" %}</h3>
+                        <span class="text-xs text-primary-600 dark:text-primary-400">{{ other_users.count }} {% trans "online" %}</span>
+                    </div>
+                    
+                    <div class="space-y-3 max-h-60 overflow-y-auto scrollbar-custom">
+                        {% for user in other_users|slice:":5" %}
+                            <a href="{% url 'chat:start_chat' user.id %}" 
+                               class="flex items-center space-x-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group">
+                                <div class="relative">
+                                    {% if user.profile.profile_picture %}
+                                        <img src="{{ user.profile.profile_picture.url }}" 
+                                             alt="{{ user.username }}" 
+                                             class="w-10 h-10 rounded-full object-cover">
+                                    {% else %}
+                                        <div class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center">
+                                            <span class="text-white text-sm font-bold">
+                                                {{ user.username|first|upper }}
+                                            </span>
+                                        </div>
+                                    {% endif %}
+                                    
+                                    {% if user.profile.is_online %}
+                                        <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
                                     {% endif %}
                                 </div>
                                 
-                                <div class="flex justify-between items-center mt-1">
-                                    <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
-                                        {% if room.last_message %}
-                                            {{ room.last_message.content|truncatechars:30 }}
-                                        {% else %}
-                                            {% trans "No messages yet" %}
-                                        {% endif %}
-                                    </p>
-                                    
-                                    {% if room.unread_count > 0 %}
-                                        <span class="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-primary-500 rounded-full">
-                                            {{ room.unread_count }}
-                                        </span>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </a>
-                    {% empty %}
-                        <div class="p-8 text-center">
-                            <i class="fas fa-comments text-gray-400 text-4xl mb-4"></i>
-                            <p class="text-gray-500 dark:text-gray-400">{% trans "No chats yet" %}</p>
-                        </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-        
-        <!-- Main Content -->
-        <div class="lg:col-span-3">
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg h-[calc(100vh-12rem)]">
-                <!-- Welcome Message -->
-                <div class="h-full flex flex-col items-center justify-center p-8 text-center">
-                    <div class="w-24 h-24 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center mb-6">
-                        <i class="fas fa-comments text-primary-600 dark:text-primary-400 text-4xl"></i>
-                    </div>
-                    
-                    <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-                        {% trans "Welcome to Real-Time Chat" %}
-                    </h2>
-                    
-                    <p class="text-gray-600 dark:text-gray-400 max-w-md mb-8">
-                        {% trans "Select a chat from the sidebar or start a new conversation with someone." %}
-                    </p>
-                    
-                    <!-- Users List -->
-                    <div class="w-full max-w-2xl">
-                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                            {% trans "Start New Chat" %}
-                        </h3>
-                        
-                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            {% for user in other_users %}
-                                <a href="{% url 'chat:start_chat' user.id %}" 
-                                   class="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-xl transition-colors">
-                                    <div class="relative mb-2">
-                                        <img src="{{ user.profile.profile_picture.url|default:'https://via.placeholder.com/40' }}" 
-                                             alt="{{ user.username }}" 
-                                             class="w-12 h-12 rounded-full object-cover">
-                                        {% if user.profile.is_online %}
-                                            <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
-                                        {% endif %}
-                                    </div>
-                                    <p class="text-sm font-medium text-gray-900 dark:text-white text-center truncate w-full">
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-medium text-gray-900 dark:text-white truncate">
                                         {{ user.get_full_name|default:user.username }}
                                     </p>
-                                    {% if user.has_chat %}
-                                        <span class="mt-1 text-xs text-primary-600 dark:text-primary-400">
-                                            <i class="fas fa-comment mr-1"></i> {% trans "Chat" %}
-                                        </span>
-                                    {% endif %}
-                                </a>
-                            {% empty %}
-                                <p class="col-span-full text-gray-500 dark:text-gray-400 text-center py-8">
-                                    {% trans "No other users found" %}
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                        {% if user.profile.is_online %}
+                                            <span class="text-green-500">●</span> {% trans "Online" %}
+                                        {% else %}
+                                            {% trans "Offline" %}
+                                        {% endif %}
+                                    </p>
+                                </div>
+                                
+                                {% if user.has_chat %}
+                                    <i class="fas fa-comment text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                                {% endif %}
+                            </a>
+                        {% empty %}
+                            <p class="text-center text-gray-500 dark:text-gray-400 py-4 text-sm">
+                                {% trans "No contacts yet" %}
+                            </p>
+                        {% endfor %}
+                    </div>
+                    
+                    {% if other_users.count > 5 %}
+                        <a href="#" class="block text-center text-sm text-primary-600 dark:text-primary-400 mt-4 hover:underline">
+                            {% trans "View all contacts" %} →
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Main Content Area -->
+            <div class="lg:col-span-3">
+                <!-- Chats Section -->
+                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <!-- Chats Header -->
+                    <div class="border-b border-gray-200 dark:border-gray-700 p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+                                    {% trans "Recent Chats" %}
+                                </h2>
+                                <p class="text-gray-600 dark:text-gray-400 mt-1">
+                                    {% trans "Your conversations and group chats" %}
                                 </p>
-                            {% endfor %}
+                            </div>
+                            
+                            <!-- Filter Tabs -->
+                            <div class="flex space-x-2">
+                                <button class="px-4 py-2 text-sm font-medium rounded-xl bg-primary-500 text-white">
+                                    {% trans "All" %}
+                                </button>
+                                <button class="px-4 py-2 text-sm font-medium rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
+                                    {% trans "Unread" %}
+                                </button>
+                                <button class="px-4 py-2 text-sm font-medium rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
+                                    {% trans "Groups" %}
+                                </button>
+                            </div>
                         </div>
                     </div>
+                    
+                    <!-- Chats List -->
+                    <div class="divide-y divide-gray-200 dark:divide-gray-700 max-h-[calc(100vh-20rem)] overflow-y-auto scrollbar-custom">
+                        {% for room in chat_rooms %}
+                            <a href="{% url 'chat:room_detail' room.id %}" 
+                               class="block chat-card-hover">
+                                <div class="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all duration-300">
+                                    <div class="flex items-start space-x-4">
+                                        <!-- Chat Avatar -->
+                                        <div class="relative flex-shrink-0">
+                                            {% if room.room_type == 'direct' %}
+                                            {% with room=item.room other_user=item.other_user %}
+                                                    {% if other_user %}
+                                                        {% if other_user.profile.profile_picture %}
+                                                            <img src="{{ other_user.profile.profile_picture.url }}" 
+                                                                 alt="{{ other_user.username }}" 
+                                                                 class="w-14 h-14 rounded-2xl object-cover border-2 border-white dark:border-gray-800 shadow-md">
+                                                        {% else %}
+                                                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center border-2 border-white dark:border-gray-800 shadow-md">
+                                                                <span class="text-white text-lg font-bold">
+                                                                    {{ other_user.username|first|upper }}
+                                                                </span>
+                                                            </div>
+                                                        {% endif %}
+                                                        
+                                                        <!-- Online Status -->
+                                                        {% if other_user.profile.is_online %}
+                                                            <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <div class="w-14 h-14 rounded-2xl bg-gray-300 dark:bg-gray-700 flex items-center justify-center border-2 border-white dark:border-gray-800 shadow-md">
+                                                            <i class="fas fa-user-slash text-gray-500 dark:text-gray-400"></i>
+                                                        </div>
+                                                    {% endif %}
+                                                {% endwith %}
+                                            {% else %}
+                                                <!-- Group Chat Avatar -->
+                                                <div class="relative">
+                                                    <div class="w-14 h-14 rounded-2xl bg-gradient-to-r from-green-500 to-teal-600 flex items-center justify-center border-2 border-white dark:border-gray-800 shadow-md">
+                                                        <i class="fas fa-users text-white text-xl"></i>
+                                                    </div>
+                                                    <div class="absolute -bottom-1 -right-1 w-6 h-6 bg-primary-500 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center">
+                                                        <span class="text-white text-xs font-bold">{{ room.participants.count }}</span>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <!-- Chat Info -->
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <h3 class="font-bold text-gray-900 dark:text-white truncate">
+                                                    {% if room.room_type == 'direct' %}
+                                                            {% with room=item.room other_user=item.other_user %}
+                                                            {% if other_user %}
+                                                                {{ other_user.get_full_name|default:other_user.username }}
+                                                            {% else %}
+                                                                {% trans "Deleted User" %}
+                                                            {% endif %}
+                                                        {% endwith %}
+                                                    {% else %}
+                                                        <span class="flex items-center space-x-2">
+                                                            <span>{{ room.name|default:"Group Chat" }}</span>
+                                                            <i class="fas fa-users text-primary-500 text-sm"></i>
+                                                        </span>
+                                                    {% endif %}
+                                                </h3>
+                                                
+                                                <div class="flex items-center space-x-3">
+                                                    {% if room.last_message_time %}
+                                                        <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                                            {{ room.last_message_time|timesince }} {% trans "ago" %}
+                                                        </span>
+                                                    {% endif %}
+                                                    
+                                                    {% if room.unread_count > 0 %}
+                                                        <span class="inline-flex items-center justify-center min-w-6 h-6 px-2 text-xs font-bold text-white bg-primary-500 rounded-full">
+                                                            {{ room.unread_count }}
+                                                        </span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Last Message Preview -->
+                                            <div class="flex items-center space-x-3">
+                                                {% if room.last_message %}
+                                                    <p class="text-sm text-gray-600 dark:text-gray-400 truncate flex-1">
+                                                        {% if room.last_message.sender == request.user %}
+                                                            <span class="font-medium text-primary-600 dark:text-primary-400 mr-1">
+                                                                {% trans "You" %}:
+                                                            </span>
+                                                        {% elif room.room_type == 'group' %}
+                                                            <span class="font-medium text-gray-700 dark:text-gray-300 mr-1">
+                                                                {{ room.last_message.sender.username }}:
+                                                            </span>
+                                                        {% endif %}
+                                                        {{ room.last_message.content|truncatechars:50 }}
+                                                    </p>
+                                                    
+                                                    <!-- Message Status -->
+                                                    {% if room.last_message.sender == request.user %}
+                                                        <div class="flex-shrink-0">
+                                                            {% if room.last_message.is_read %}
+                                                                <i class="fas fa-check-double text-blue-500" title="{% trans 'Read' %}"></i>
+                                                            {% else %}
+                                                                <i class="fas fa-check text-gray-400" title="{% trans 'Sent' %}"></i>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% endif %}
+                                                {% else %}
+                                                    <p class="text-sm text-gray-500 dark:text-gray-400 italic">
+                                                        {% trans "No messages yet" %}
+                                                    </p>
+                                                {% endif %}
+                                            </div>
+                                            
+                                            <!-- Typing Indicator (Placeholder) -->
+                                            {% if room.room_type == 'direct' %}
+                                                {% with room=item.room other_user=item.other_user %}
+                                                    {% if other_user and other_user.profile.is_online %}
+                                                        <div class="mt-1">
+                                                            <div class="typing-indicator hidden">
+                                                                <span class="text-xs text-primary-600 dark:text-primary-400 flex items-center space-x-1">
+                                                                    <span class="typing-animation">
+                                                                        <span class="inline-block w-1 h-1 bg-primary-500 rounded-full"></span>
+                                                                        <span class="inline-block w-1 h-1 bg-primary-500 rounded-full"></span>
+                                                                        <span class="inline-block w-1 h-1 bg-primary-500 rounded-full"></span>
+                                                                    </span>
+                                                                    <span>{% trans "typing..." %}</span>
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    {% endif %}
+                                                {% endwith %}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% empty %}
+                            <!-- Empty State -->
+                            <div class="p-12 text-center">
+                                <div class="w-24 h-24 mx-auto rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-6">
+                                    <i class="fas fa-comments text-gray-400 text-3xl"></i>
+                                </div>
+                                <h3 class="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                                    {% trans "No conversations yet" %}
+                                </h3>
+                                <p class="text-gray-500 dark:text-gray-400 max-w-md mx-auto mb-8">
+                                    {% trans "Start a conversation with someone or create a group chat to begin messaging." %}
+                                </p>
+                                <a href="#" class="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:shadow-lg transition-all">
+                                    <i class="fas fa-plus"></i>
+                                    <span>{% trans "Start Your First Chat" %}</span>
+                                </a>
+                            </div>
+                        {% endfor %}
+                    </div>
                 </div>
+                
+                <!-- Welcome Section (Only when no chats) -->
+                {% if not chat_rooms %}
+                    <div class="mt-6">
+                        <div class="bg-gradient-to-r from-primary-500 to-primary-600 rounded-2xl shadow-xl overflow-hidden">
+                            <div class="p-8 md:p-12 text-center text-white">
+                                <div class="w-20 h-20 mx-auto rounded-full bg-white/20 flex items-center justify-center mb-6 backdrop-blur-sm">
+                                    <i class="fas fa-comments text-3xl"></i>
+                                </div>
+                                
+                                <h2 class="text-3xl font-bold mb-4">
+                                    {% trans "Welcome to Real-Time Chat!" %}
+                                </h2>
+                                
+                                <p class="text-white/90 max-w-2xl mx-auto mb-8">
+                                    {% trans "Experience seamless real-time messaging with a beautiful interface. Start connecting with others today!" %}
+                                </p>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto">
+                                    <div class="glass-card p-6 rounded-xl">
+                                        <div class="w-12 h-12 mx-auto rounded-full bg-white/20 flex items-center justify-center mb-4">
+                                            <i class="fas fa-bolt"></i>
+                                        </div>
+                                        <h4 class="font-bold mb-2">{% trans "Real-Time" %}</h4>
+                                        <p class="text-sm text-white/80">{% trans "Instant message delivery" %}</p>
+                                    </div>
+                                    
+                                    <div class="glass-card p-6 rounded-xl">
+                                        <div class="w-12 h-12 mx-auto rounded-full bg-white/20 flex items-center justify-center mb-4">
+                                            <i class="fas fa-shield-alt"></i>
+                                        </div>
+                                        <h4 class="font-bold mb-2">{% trans "Secure" %}</h4>
+                                        <p class="text-sm text-white/80">{% trans "End-to-end encryption" %}</p>
+                                    </div>
+                                    
+                                    <div class="glass-card p-6 rounded-xl">
+                                        <div class="w-12 h-12 mx-auto rounded-full bg-white/20 flex items-center justify-center mb-4">
+                                            <i class="fas fa-globe"></i>
+                                        </div>
+                                        <h4 class="font-bold mb-2">{% trans "Multi-Platform" %}</h4>
+                                        <p class="text-sm text-white/80">{% trans "Works on all devices" %}</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Start Chatting CTA -->
+                                <div class="mt-8">
+                                    <h3 class="text-xl font-bold mb-4">{% trans "Ready to start chatting?" %}</h3>
+                                    
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl mx-auto">
+                                        <a href="#" 
+                                           class="bg-white text-primary-600 hover:bg-gray-100 font-semibold py-3 px-6 rounded-xl transition-colors flex items-center justify-center space-x-2">
+                                            <i class="fas fa-user-plus"></i>
+                                            <span>{% trans "Find Friends" %}</span>
+                                        </a>
+                                        
+                                        <a href="{% url 'chat:create_group_chat' %}" 
+                                           class="bg-white/20 hover:bg-white/30 backdrop-blur-sm font-semibold py-3 px-6 rounded-xl transition-colors flex items-center justify-center space-x-2 border border-white/30">
+                                            <i class="fas fa-users"></i>
+                                            <span>{% trans "Create Group" %}</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
 
+<!-- JavaScript Enhancements -->
 <script>
-    // Toggle theme function
+    // Enhanced theme toggle
     function toggleTheme() {
         const html = document.documentElement;
+        const icon = document.querySelector('[onclick="toggleTheme()"] i');
         const isDark = html.classList.contains('dark');
         
         if (isDark) {
             html.classList.remove('dark');
+            icon.className = 'fas fa-moon text-yellow-500';
             localStorage.setItem('theme', 'light');
+            showNotification('{% trans "Light mode activated" %}', 'info');
         } else {
             html.classList.add('dark');
+            icon.className = 'fas fa-sun text-yellow-400';
             localStorage.setItem('theme', 'dark');
+            showNotification('{% trans "Dark mode activated" %}', 'info');
         }
         
         // Send theme update to server
+        updateThemePreference(!isDark ? 'dark' : 'light');
+    }
+    
+    // Update theme preference on server
+    async function updateThemePreference(theme) {
         const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
         if (csrfToken) {
-            fetch('{% url "chat:update_profile" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken,
-                },
-                body: JSON.stringify({
-                    theme: isDark ? 'light' : 'dark'
-                })
-            });
+            try {
+                await fetch('{% url "chat:update_profile" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken,
+                    },
+                    body: JSON.stringify({ theme: theme })
+                });
+            } catch (error) {
+                console.error('Failed to update theme preference:', error);
+            }
         }
     }
     
-    // Initialize theme from localStorage
+    // Show notification
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-xl shadow-xl transform transition-all duration-300 translate-x-0 ${
+            type === 'info' ? 'bg-primary-500 text-white' : 
+            type === 'success' ? 'bg-green-500 text-white' : 
+            'bg-red-500 text-white'
+        }`;
+        notification.innerHTML = `
+            <div class="flex items-center space-x-3">
+                <i class="fas fa-${type === 'info' ? 'info-circle' : type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                <span>${message}</span>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto remove after 3 seconds
+        setTimeout(() => {
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
+    
+    // Initialize theme
     document.addEventListener('DOMContentLoaded', function() {
+        // Set theme from localStorage
         const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        
+        if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
             document.documentElement.classList.add('dark');
         }
+        
+        // Add hover effects to chat cards
+        const chatCards = document.querySelectorAll('.chat-card-hover');
+        chatCards.forEach(card => {
+            card.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-4px)';
+                this.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
+            });
+            
+            card.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0)';
+                this.style.boxShadow = '';
+            });
+        });
+        
+        // Add click animation to buttons
+        document.querySelectorAll('button, a').forEach(element => {
+            element.addEventListener('click', function(e) {
+                if (this.classList.contains('no-animation')) return;
+                
+                // Ripple effect
+                const ripple = document.createElement('span');
+                const rect = this.getBoundingClientRect();
+                const size = Math.max(rect.width, rect.height);
+                const x = e.clientX - rect.left - size / 2;
+                const y = e.clientY - rect.top - size / 2;
+                
+                ripple.style.cssText = `
+                    position: absolute;
+                    border-radius: 50%;
+                    background: rgba(255, 255, 255, 0.7);
+                    transform: scale(0);
+                    animation: ripple 0.6s linear;
+                    width: ${size}px;
+                    height: ${size}px;
+                    top: ${y}px;
+                    left: ${x}px;
+                    pointer-events: none;
+                `;
+                
+                this.style.position = 'relative';
+                this.style.overflow = 'hidden';
+                this.appendChild(ripple);
+                
+                setTimeout(() => ripple.remove(), 600);
+            });
+        });
+        
+        // Add CSS for ripple animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes ripple {
+                to {
+                    transform: scale(4);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    });
+    
+    // Search functionality
+    document.querySelector('input[placeholder="{% trans 'Search chats...' %}"]').addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        const chatItems = document.querySelectorAll('.chat-card-hover');
+        
+        chatItems.forEach(item => {
+            const chatName = item.querySelector('h3').textContent.toLowerCase();
+            const lastMessage = item.querySelector('p').textContent.toLowerCase();
+            
+            if (chatName.includes(searchTerm) || lastMessage.includes(searchTerm)) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
     });
 </script>
 {% endblock %}
