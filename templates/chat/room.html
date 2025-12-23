@@ -1,638 +1,952 @@
-{% extends 'base.html' %}
-{% load i18n static %}
+<!-- room.html - تحسينات إضافية -->
 
-{% block title %}
-    {% if room.room_type == 'direct' %}
-        {{ other_participant.get_full_name|default:other_participant.username }} - Chat
-    {% else %}
-        {{ room.name|default:"Group Chat" }} - Chat
-    {% endif %}
-{% endblock %}
+<!-- إضافة هذه الأقسام في room.html -->
 
-{% block extra_css %}
-<style>
-    .chat-messages {
-        height: calc(100vh - 300px);
-        scroll-behavior: smooth;
-    }
-    
-    .message-sent {
-        margin-left: auto;
-        background-color: #3b82f6;
-        color: white;
-        border-radius: 18px 18px 4px 18px;
-    }
-    
-    .message-received {
-        margin-right: auto;
-        background-color: #374151;
-        color: white;
-        border-radius: 18px 18px 18px 4px;
-    }
-    
-    .typing-indicator span {
-        animation: typing 1.4s infinite;
-    }
-    
-    .typing-indicator span:nth-child(2) {
-        animation-delay: 0.2s;
-    }
-    
-    .typing-indicator span:nth-child(3) {
-        animation-delay: 0.4s;
-    }
-    
-    @keyframes typing {
-        0%, 60%, 100% { opacity: 0.4; transform: translateY(0); }
-        30% { opacity: 1; transform: translateY(-5px); }
-    }
-    
-    [dir="rtl"] .message-sent {
-        margin-right: auto;
-        margin-left: 0;
-        border-radius: 18px 18px 18px 4px;
-    }
-    
-    [dir="rtl"] .message-received {
-        margin-left: auto;
-        margin-right: 0;
-        border-radius: 18px 18px 4px 18px;
-    }
-</style>
-{% endblock %}
-
-{% block content %}
-<!-- Room Data for JavaScript -->
-<div id="room-data" 
-     data-room-id="{{ room.id }}"
-     data-room-type="{{ room.room_type }}"
-     data-current-user-id="{{ request.user.id }}"
-     data-is-group="{% if room.room_type == 'group' %}true{% else %}false{% endif %}"
-     style="display: none;"></div>
-
-<div class="h-screen flex flex-col">
-    <!-- Chat Header -->
-    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-4">
-                <!-- Back Button -->
-                <a href="{% url 'chat:index' %}" class="lg:hidden hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-full transition-colors">
-                    <i class="fas fa-arrow-left text-gray-600 dark:text-gray-400"></i>
-                </a>
-                
-                <!-- Chat Info -->
-                <div class="flex items-center space-x-3">
-                    <div class="relative">
-                        {% if room.room_type == 'direct' %}
-                            <!-- Direct Chat Avatar -->
-                            <div class="relative">
-                                {% if other_participant and other_participant.profile %}
-                                    {% if other_participant.profile.profile_picture and other_participant.profile.profile_picture.url %}
-                                        <img src="{{ other_participant.profile.profile_picture.url }}" 
-                                             alt="{{ other_participant.username }}" 
-                                             class="w-10 h-10 rounded-full object-cover border-2 border-white dark:border-gray-800">
-                                    {% else %}
-                                        <div class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                                            <span class="text-white font-semibold text-sm">
-                                                {{ other_participant.username|first|upper }}
-                                            </span>
-                                        </div>
-                                    {% endif %}
-                                    
-                                    {% if other_participant.profile.is_online %}
-                                        <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
-                                    {% else %}
-                                        <div class="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 rounded-full border-2 border-white dark:border-gray-800"></div>
-                                    {% endif %}
-                                {% else %}
-                                    <!-- Fallback for deleted users -->
-                                    <div class="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-700 flex items-center justify-center">
-                                        <i class="fas fa-user-slash text-gray-500 dark:text-gray-400"></i>
-                                    </div>
-                                {% endif %}
-                            </div>
-                        {% else %}
-                            <!-- Group Chat Avatar -->
-                            <div class="w-10 h-10 rounded-full bg-gradient-to-r from-green-500 to-teal-600 flex items-center justify-center">
-                                <i class="fas fa-users text-white"></i>
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <!-- Chat Title and Status -->
-                    <div>
-                        <h2 class="font-semibold text-gray-900 dark:text-white">
-                            {% if room.room_type == 'direct' %}
-                                {% if other_participant %}
-                                    {{ other_participant.get_full_name|default:other_participant.username }}
-                                {% else %}
-                                    {% trans "Deleted User" %}
-                                {% endif %}
-                            {% else %}
-                                {{ room.name|default:"Group Chat" }}
-                            {% endif %}
-                        </h2>
-                        
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
-                            {% if room.room_type == 'direct' %}
-                                {% if other_participant and other_participant.profile %}
-                                    {% if other_participant.profile.is_online %}
-                                        <span class="text-green-500">●</span> {% trans "Online" %}
-                                    {% else %}
-                                        <span class="text-gray-400">●</span> 
-                                        {% trans "Last seen" %} 
-                                        {% if other_participant.profile.last_seen %}
-                                            {{ other_participant.profile.last_seen|timesince }} {% trans "ago" %}
-                                        {% else %}
-                                            {% trans "Offline" %}
-                                        {% endif %}
-                                    {% endif %}
-                                {% endif %}
-                            {% else %}
-                                <span class="text-blue-500">●</span> 
-                                {{ room.participants.count }} 
-                                {% if room.participants.count == 1 %}
-                                    {% trans "member" %}
-                                {% else %}
-                                    {% trans "members" %}
-                                {% endif %}
-                            {% endif %}
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Chat Actions -->
-            <div class="flex items-center space-x-2">
-                <!-- Search Button -->
-                <button class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors tooltip" 
-                        data-tooltip="{% trans 'Search messages' %}">
-                    <i class="fas fa-search text-gray-600 dark:text-gray-400"></i>
-                </button>
-                
-                <!-- Info Button -->
-                <button id="toggle-sidebar" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors tooltip"
-                        data-tooltip="{% trans 'Chat info' %}">
-                    <i class="fas fa-info-circle text-gray-600 dark:text-gray-400"></i>
-                </button>
-                
-                <!-- More Options Dropdown -->
-                <div class="relative">
-                    <button id="chat-options-btn" 
-                            class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
-                        <i class="fas fa-ellipsis-v text-gray-600 dark:text-gray-400"></i>
-                    </button>
-                    
-                    <div id="chat-options-menu" class="hidden absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 py-1">
-                        {% if room.room_type == 'group' %}
-                            <button class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                                <i class="fas fa-user-plus mr-3"></i>
-                                {% trans "Add members" %}
-                            </button>
-                            <button class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                                <i class="fas fa-cog mr-3"></i>
-                                {% trans "Group settings" %}
-                            </button>
-                            <hr class="my-1 border-gray-200 dark:border-gray-700">
-                        {% endif %}
-                        
-                        <button class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                            <i class="fas fa-bell mr-3"></i>
-                            {% trans "Mute notifications" %}
-                        </button>
-                        <button class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                            <i class="fas fa-palette mr-3"></i>
-                            {% trans "Change theme" %}
-                        </button>
-                        <hr class="my-1 border-gray-200 dark:border-gray-700">
-                        
-                        <button class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center">
-                            <i class="fas fa-trash mr-3"></i>
-                            {% trans "Delete chat" %}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Chat Messages Area -->
-    <div id="chat-container" class="flex-1 flex overflow-hidden">
-        <!-- Messages List -->
-        <div class="flex-1 flex flex-col">
-            <!-- Messages -->
-            <div id="chat-messages" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 scrollbar-thin bg-gray-50 dark:bg-gray-900">
-                <!-- Date Separator -->
-                {% if page_obj %}
-                    <div class="text-center my-4">
-                        <span class="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-xs text-gray-600 dark:text-gray-400 rounded-full">
-                            {% trans "Today" %}
-                        </span>
-                    </div>
-                {% endif %}
-                
-                <!-- Existing Messages -->
-                {% for message in page_obj %}
-                    <div class="message-item {% if message.sender == request.user %}message-sent-item{% else %}message-received-item{% endif %}"
-                         data-message-id="{{ message.id }}"
-                         data-sender-id="{{ message.sender.id }}">
-                        <div class="flex {% if message.sender == request.user %}justify-end{% else %}justify-start{% endif %}">
-                            <div class="max-w-[70%] md:max-w-[60%]">
-                                {% if message.sender != request.user and room.room_type == 'group' %}
-                                    <div class="flex items-center space-x-2 mb-1">
-                                        {% if message.sender.profile.profile_picture %}
-                                            <img src="{{ message.sender.profile.profile_picture.url }}" 
-                                                 alt="{{ message.sender.username }}" 
-                                                 class="w-6 h-6 rounded-full">
-                                        {% else %}
-                                            <div class="w-6 h-6 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center">
-                                                <span class="text-white text-xs font-bold">
-                                                    {{ message.sender.username|first|upper }}
-                                                </span>
-                                            </div>
-                                        {% endif %}
-                                        <span class="font-semibold text-xs text-gray-700 dark:text-gray-300">
-                                            {{ message.sender.get_full_name|default:message.sender.username }}
-                                        </span>
-                                    </div>
-                                {% endif %}
-                                
-                                <div class="message-bubble px-4 py-3 {% if message.sender == request.user %}message-sent{% else %}message-received{% endif %}">
-                                    <div class="mb-1 whitespace-pre-wrap">{{ message.content }}</div>
-                                    <div class="flex items-center justify-between mt-2">
-                                        <span class="text-xs opacity-75">
-                                            {{ message.created|time }}
-                                        </span>
-                                        {% if message.sender == request.user %}
-                                            <div class="flex items-center space-x-1 ml-2">
-                                                {% if message.is_read %}
-                                                    <i class="fas fa-check-double text-blue-400" title="{% trans 'Read' %}"></i>
-                                                {% else %}
-                                                    <i class="fas fa-check text-gray-400" title="{% trans 'Sent' %}"></i>
-                                                {% endif %}
-                                            </div>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                {% empty %}
-                    <!-- Empty State -->
-                    <div class="h-full flex flex-col items-center justify-center text-center p-8">
-                        <div class="w-24 h-24 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-6">
-                            <i class="fas fa-comments text-gray-400 text-3xl"></i>
-                        </div>
-                        <h3 class="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                            {% trans "No messages yet" %}
-                        </h3>
-                        <p class="text-gray-500 dark:text-gray-400 max-w-md">
-                            {% if room.room_type == 'direct' %}
-                                {% trans "Start the conversation by sending a message!" %}
-                            {% else %}
-                                {% trans "Be the first to send a message in this group!" %}
-                            {% endif %}
-                        </p>
-                    </div>
-                {% endfor %}
-                
-                <!-- Typing Indicator -->
-                <div id="typing-indicator" class="hidden justify-start">
-                    <div class="max-w-[70%] md:max-w-[60%]">
-                        <div class="message-bubble px-4 py-3 message-received">
-                            <div class="typing-indicator flex space-x-1">
-                                <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
-                                <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
-                                <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Message Input -->
-            <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
-                <form id="message-form" class="flex items-end space-x-3">
-                    {% csrf_token %}
-                    <input type="hidden" name="room_id" value="{{ room.id }}">
-                    
-                    <!-- Attachment Button -->
-                    <div class="relative">
-                        <button type="button" 
-                                class="p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors tooltip"
-                                data-tooltip="{% trans 'Attach files' %}">
-                            <i class="fas fa-paperclip text-gray-600 dark:text-gray-400"></i>
-                        </button>
-                        
-                        <!-- Attachment Menu -->
-                        <div class="hidden absolute bottom-full left-0 mb-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-10 p-2">
-                            <button type="button" class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center">
-                                <i class="fas fa-image text-green-500 mr-2"></i>
-                                {% trans "Photo & Video" %}
-                            </button>
-                            <button type="button" class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center">
-                                <i class="fas fa-file text-blue-500 mr-2"></i>
-                                {% trans "Document" %}
-                            </button>
-                            <button type="button" class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center">
-                                <i class="fas fa-microphone text-red-500 mr-2"></i>
-                                {% trans "Voice message" %}
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <!-- Message Input -->
-                    <div class="flex-1 relative">
-                        <textarea id="message-input" 
-                                  name="message"
-                                  placeholder="{% trans 'Type your message...' %}" 
-                                  rows="1"
-                                  class="w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border-none rounded-2xl focus:ring-2 focus:ring-primary-500 focus:outline-none resize-none max-h-32"
-                                  autocomplete="off"
-                                  oninput="autoResize(this)"></textarea>
-                        
-                        <!-- Emoji Button -->
-                        <button type="button" 
-                                class="absolute right-3 bottom-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                                onclick="toggleEmojiPicker()">
-                            <i class="fas fa-smile"></i>
-                        </button>
-                    </div>
-                    
-                    <!-- Send Button -->
-                    <button type="submit" 
-                            id="send-btn"
-                            class="p-3 bg-primary-500 hover:bg-primary-600 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled>
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
-                </form>
-                
-                <!-- Message Status -->
-                <div id="message-status" class="mt-2 text-xs text-gray-500 dark:text-gray-400 hidden">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    <span id="status-text"></span>
-                </div>
-            </div>
+<!-- Pinned Messages Sidebar -->
+<div id="pinned-sidebar" class="hidden lg:block w-64 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-y-auto">
+    <div class="p-4">
+        <div class="flex items-center justify-between mb-4">
+            <h4 class="font-semibold text-gray-900 dark:text-white">
+                <i class="fas fa-thumbtack text-yellow-500 mr-2"></i>
+                {% trans "Pinned Messages" %}
+            </h4>
+            <span class="text-xs text-gray-500">({{ pinned_messages|length }})</span>
         </div>
         
-        <!-- Members Sidebar -->
-        <div id="members-sidebar" class="hidden lg:block w-80 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-y-auto">
-            <div class="p-6">
-                <!-- Sidebar Header -->
-                <div class="flex items-center justify-between mb-6">
-                    <h3 class="font-semibold text-gray-900 dark:text-white">
-                        {% if room.room_type == 'group' %}
-                            {% trans "Group Info" %}
+        <div class="space-y-3">
+            {% for message in pinned_messages %}
+                <div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                    <div class="flex items-center space-x-2 mb-2">
+                        {% if message.sender.profile.profile_picture %}
+                            <img src="{{ message.sender.profile.profile_picture.url }}" 
+                                 alt="{{ message.sender.username }}"
+                                 class="w-6 h-6 rounded-full">
                         {% else %}
-                            {% trans "Chat Info" %}
-                        {% endif %}
-                    </h3>
-                    <button id="close-sidebar" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-                        <i class="fas fa-times text-gray-600 dark:text-gray-400"></i>
-                    </button>
-                </div>
-                
-                {% if room.room_type == 'group' %}
-                    <!-- Group Info -->
-                    <div class="mb-8">
-                        <div class="flex flex-col items-center mb-6">
-                            {% if room.room_type == 'group' %}
-                                <div class="w-20 h-20 rounded-full bg-gradient-to-r from-green-500 to-teal-600 flex items-center justify-center mb-4">
-                                    <i class="fas fa-users text-white text-2xl"></i>
-                                </div>
-                            {% endif %}
-                            <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                                {{ room.name|default:"Group Chat" }}
-                            </h4>
-                            <p class="text-sm text-gray-500 dark:text-gray-400 text-center">
-                                {{ room.participants.count }} 
-                                {% if room.participants.count == 1 %}
-                                    {% trans "member" %}
-                                {% else %}
-                                    {% trans "members" %}
-                                {% endif %}
-                            </p>
-                        </div>
-                        
-                        <!-- Group Actions -->
-                        <div class="space-y-2 mb-8">
-                            <button class="w-full flex items-center justify-between p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-                                <div class="flex items-center">
-                                    <div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center mr-3">
-                                        <i class="fas fa-search text-blue-600 dark:text-blue-400"></i>
-                                    </div>
-                                    <span class="text-gray-700 dark:text-gray-300">{% trans "Search messages" %}</span>
-                                </div>
-                                <i class="fas fa-chevron-right text-gray-400"></i>
-                            </button>
-                            
-                            <button class="w-full flex items-center justify-between p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-                                <div class="flex items-center">
-                                    <div class="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center mr-3">
-                                        <i class="fas fa-bell text-purple-600 dark:text-purple-400"></i>
-                                    </div>
-                                    <span class="text-gray-700 dark:text-gray-300">{% trans "Mute notifications" %}</span>
-                                </div>
-                                <i class="fas fa-toggle-off text-gray-400"></i>
-                            </button>
-                        </div>
-                    </div>
-                {% endif %}
-                
-                <!-- Members List -->
-                <div>
-                    <h4 class="font-semibold text-gray-900 dark:text-white mb-4">
-                        {% trans "Members" %} ({{ room.participants.count }})
-                    </h4>
-                    
-                    <div class="space-y-3">
-                        {% for participant in room.participants.all %}
-                            <div class="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                                <div class="flex items-center space-x-3">
-                                    <div class="relative">
-                                        {% if participant.profile.profile_picture %}
-                                            <img src="{{ participant.profile.profile_picture.url }}" 
-                                                 alt="{{ participant.username }}" 
-                                                 class="w-10 h-10 rounded-full object-cover">
-                                        {% else %}
-                                            <div class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center">
-                                                <span class="text-white font-semibold">
-                                                    {{ participant.username|first|upper }}
-                                                </span>
-                                            </div>
-                                        {% endif %}
-                                        
-                                        {% if participant.profile.is_online %}
-                                            <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
-                                        {% endif %}
-                                    </div>
-                                    
-                                    <div>
-                                        <p class="font-medium text-gray-900 dark:text-white">
-                                            {{ participant.get_full_name|default:participant.username }}
-                                            {% if participant == request.user %}
-                                                <span class="text-xs text-primary-600 dark:text-primary-400 ml-1">
-                                                    ({% trans "You" %})
-                                                </span>
-                                            {% endif %}
-                                        </p>
-                                        <p class="text-xs text-gray-500 dark:text-gray-400">
-                                            {% if participant == request.user %}
-                                                {% trans "You" %}
-                                            {% elif participant.profile.is_online %}
-                                                {% trans "Online" %}
-                                            {% else %}
-                                                {% trans "Offline" %}
-                                            {% endif %}
-                                        </p>
-                                    </div>
-                                </div>
-                                
-                                {% if participant != request.user %}
-                                    <button class="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg">
-                                        <i class="fas fa-ellipsis-v text-gray-600 dark:text-gray-400"></i>
-                                    </button>
-                                {% endif %}
+                            <div class="w-6 h-6 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center">
+                                <span class="text-white text-xs font-bold">
+                                    {{ message.sender.username|first|upper }}
+                                </span>
                             </div>
-                        {% endfor %}
+                        {% endif %}
+                        <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                            {{ message.sender.username }}
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">{{ message.content|truncatechars:80 }}</p>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-gray-500">{{ message.created|date:"M d, H:i" }}</span>
+                        <button onclick="unpinMessage('{{ message.id }}')" 
+                                class="text-xs text-gray-500 hover:text-red-500">
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
                 </div>
-                
-                <!-- Created Info -->
-                <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
-                    <p class="text-xs text-gray-500 dark:text-gray-400">
-                        {% trans "Created" %} {{ room.created|date:"F d, Y" }}
-                    </p>
-                </div>
-            </div>
+            {% empty %}
+                <p class="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                    {% trans "No pinned messages" %}
+                </p>
+            {% endfor %}
         </div>
     </div>
 </div>
 
-<!-- JavaScript -->
-<script src="{% static 'js/chat.js' %}"></script>
+<!-- إضافة في قسم JavaScript -->
 <script>
-    // Initialize chat with room data
-    document.addEventListener('DOMContentLoaded', function() {
-        const roomData = document.getElementById('room-data');
-        const chatConfig = {
-            roomId: parseInt(roomData.dataset.roomId),
-            roomType: roomData.dataset.roomType,
-            currentUserId: parseInt(roomData.dataset.currentUserId),
-            isGroupChat: roomData.dataset.isGroup === 'true',
-            csrfToken: document.querySelector('[name=csrfmiddlewaretoken]')?.value
-        };
-        
-        // Initialize chat
-        if (window.ChatRoom) {
-            window.chatRoom = new ChatRoom(chatConfig);
+    // Enhanced chat functionality
+    
+    class EnhancedChat {
+        constructor(config) {
+            this.config = config;
+            this.socket = null;
+            this.typingTimeout = null;
+            this.lastTypingTime = 0;
+            this.isTyping = false;
+            this.initialize();
         }
         
-        // Initialize UI components
-        initializeUI();
+        initialize() {
+            this.connectWebSocket();
+            this.setupEventListeners();
+            this.loadMoreMessages();
+            this.setupInfiniteScroll();
+        }
+        
+        connectWebSocket() {
+            const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+            const wsUrl = `${wsScheme}://${window.location.host}/ws/chat/${this.config.roomId}/`;
+            
+            this.socket = new WebSocket(wsUrl);
+            
+            this.socket.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                this.handleWebSocketMessage(data);
+            };
+            
+            this.socket.onopen = () => {
+                console.log('WebSocket connected');
+                this.sendUserStatus(true);
+            };
+            
+            this.socket.onclose = () => {
+                console.log('WebSocket disconnected. Reconnecting...');
+                setTimeout(() => this.connectWebSocket(), 3000);
+            };
+        }
+        
+        handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'chat_message':
+                    this.appendMessage(data);
+                    break;
+                case 'typing_indicator':
+                    this.showTypingIndicator(data);
+                    break;
+                case 'user_status':
+                    this.updateUserStatus(data);
+                    break;
+                case 'read_receipt':
+                    this.updateReadReceipt(data);
+                    break;
+                case 'message_reaction':
+                    this.updateMessageReaction(data);
+                    break;
+                case 'message_deleted':
+                    this.deleteMessage(data.message_id);
+                    break;
+                case 'message_pinned':
+                    this.pinMessage(data);
+                    break;
+            }
+        }
+        
+        appendMessage(data) {
+            const messagesContainer = document.getElementById('chat-messages');
+            const messageHTML = this.createMessageHTML(data);
+            
+            // Check if message already exists
+            const existingMessage = document.querySelector(`[data-message-id="${data.message_id}"]`);
+            if (existingMessage) {
+                existingMessage.replaceWith(messageHTML);
+            } else {
+                messagesContainer.insertAdjacentHTML('beforeend', messageHTML);
+            }
+            
+            // Scroll to bottom
+            this.scrollToBottom();
+            
+            // Play notification sound if not sender
+            if (parseInt(data.sender_id) !== this.config.currentUserId) {
+                this.playNotificationSound();
+                this.showDesktopNotification(data);
+            }
+        }
+        
+        createMessageHTML(data) {
+            const isSender = parseInt(data.sender_id) === this.config.currentUserId;
+            const isGroup = this.config.isGroupChat;
+            const timestamp = new Date(data.timestamp).toLocaleTimeString([], { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            return `
+                <div class="message-item ${isSender ? 'message-sent-item' : 'message-received-item'}"
+                     data-message-id="${data.message_id}">
+                    <div class="flex ${isSender ? 'justify-end' : 'justify-start'}">
+                        <div class="max-w-[70%] md:max-w-[60%]">
+                            ${!isSender && isGroup ? `
+                                <div class="flex items-center space-x-2 mb-1">
+                                    <div class="w-6 h-6 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center">
+                                        <span class="text-white text-xs font-bold">${data.sender[0].toUpperCase()}</span>
+                                    </div>
+                                    <span class="font-semibold text-xs text-gray-700 dark:text-gray-300">
+                                        ${data.sender}
+                                    </span>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="message-bubble px-4 py-3 ${isSender ? 'message-sent' : 'message-received'} 
+                                 hover:bg-opacity-90 cursor-pointer"
+                                 onclick="showMessageOptions('${data.message_id}')">
+                                ${data.message_type === 'image' ? `
+                                    <div class="mb-2">
+                                        <img src="${data.file_url}" 
+                                             alt="Image" 
+                                             class="max-w-full rounded-lg cursor-pointer"
+                                             onclick="openImageViewer('${data.file_url}')">
+                                    </div>
+                                ` : data.message_type === 'file' ? `
+                                    <div class="flex items-center space-x-3 p-3 bg-black/10 dark:bg-white/10 rounded-lg">
+                                        <i class="fas fa-file text-2xl text-blue-500"></i>
+                                        <div class="flex-1">
+                                            <p class="font-medium truncate">${data.file_name}</p>
+                                            <p class="text-xs text-gray-500">${this.formatFileSize(data.file_size)}</p>
+                                        </div>
+                                        <a href="${data.file_url}" 
+                                           download="${data.file_name}"
+                                           class="p-2 hover:bg-black/20 dark:hover:bg-white/20 rounded-lg">
+                                            <i class="fas fa-download"></i>
+                                        </a>
+                                    </div>
+                                ` : `
+                                    <div class="mb-1 whitespace-pre-wrap">${this.escapeHtml(data.content)}</div>
+                                `}
+                                
+                                <div class="flex items-center justify-between mt-2">
+                                    <span class="text-xs opacity-75">${timestamp}</span>
+                                    ${isSender ? `
+                                        <div class="flex items-center space-x-1 ml-2">
+                                            <i class="fas fa-check${data.is_read ? '-double text-blue-400' : ' text-gray-400'}"></i>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                
+                                <!-- Reactions -->
+                                <div class="message-reactions mt-2 flex flex-wrap gap-1">
+                                    ${data.reactions ? this.renderReactions(data.reactions) : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        renderReactions(reactions) {
+            const reactionMap = {
+                'like': '👍',
+                'love': '❤️',
+                'haha': '😂',
+                'wow': '😮',
+                'sad': '😢',
+                'angry': '😠'
+            };
+            
+            // Group reactions by type
+            const grouped = {};
+            reactions.forEach(r => {
+                if (!grouped[r.reaction]) grouped[r.reaction] = [];
+                grouped[r.reaction].push(r.user_id);
+            });
+            
+            let html = '';
+            for (const [reactionType, userIds] of Object.entries(grouped)) {
+                const isReacted = userIds.includes(this.config.currentUserId);
+                html += `
+                    <button onclick="toggleReaction('${reactionType}')"
+                            class="px-2 py-1 text-xs rounded-full ${isReacted ? 
+                                'bg-primary-500 text-white' : 
+                                'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}">
+                        ${reactionMap[reactionType]} ${userIds.length}
+                    </button>
+                `;
+            }
+            return html;
+        }
+        
+        showTypingIndicator(data) {
+            const indicator = document.getElementById('typing-indicator');
+            if (!data.is_typing) {
+                indicator.classList.add('hidden');
+                return;
+            }
+            
+            indicator.classList.remove('hidden');
+            
+            // Update typing user display
+            const typingUser = document.querySelector('.typing-user');
+            if (typingUser) {
+                typingUser.textContent = data.username;
+            }
+            
+            // Hide after 3 seconds
+            clearTimeout(this.typingTimeout);
+            this.typingTimeout = setTimeout(() => {
+                indicator.classList.add('hidden');
+            }, 3000);
+        }
+        
+        sendTypingStatus(isTyping) {
+            if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                const now = Date.now();
+                // Throttle typing events
+                if (isTyping && (now - this.lastTypingTime > 1000)) {
+                    this.socket.send(JSON.stringify({
+                        type: 'typing',
+                        is_typing: true
+                    }));
+                    this.lastTypingTime = now;
+                } else if (!isTyping && this.isTyping) {
+                    this.socket.send(JSON.stringify({
+                        type: 'typing',
+                        is_typing: false
+                    }));
+                }
+                this.isTyping = isTyping;
+            }
+        }
+        
+        sendUserStatus(online) {
+            if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                this.socket.send(JSON.stringify({
+                    type: 'user_status',
+                    online: online
+                }));
+            }
+        }
+        
+        sendMessage(content, messageType = 'text', file = null) {
+            if (!content.trim() && !file) return;
+            
+            if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                const messageData = {
+                    type: 'chat_message',
+                    message: content,
+                    message_type: messageType,
+                    file_url: file ? URL.createObjectURL(file) : null
+                };
+                
+                this.socket.send(JSON.stringify(messageData));
+                
+                // Clear input
+                const input = document.getElementById('message-input');
+                if (input) {
+                    input.value = '';
+                    input.style.height = 'auto';
+                }
+                
+                // Send typing stopped
+                this.sendTypingStatus(false);
+            }
+        }
+        
+        scrollToBottom() {
+            const container = document.getElementById('chat-messages');
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+        
+        playNotificationSound() {
+            const audio = new Audio('/static/sounds/notification.mp3');
+            audio.volume = 0.3;
+            audio.play().catch(e => console.log('Audio play failed:', e));
+        }
+        
+        showDesktopNotification(data) {
+            if (!("Notification" in window)) return;
+            
+            if (Notification.permission === "granted") {
+                new Notification(`${data.sender}`, {
+                    body: data.content,
+                    icon: '/static/images/notification-icon.png'
+                });
+            } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        this.showDesktopNotification(data);
+                    }
+                });
+            }
+        }
+        
+        loadMoreMessages() {
+            const container = document.getElementById('chat-messages');
+            if (!container) return;
+            
+            container.addEventListener('scroll', () => {
+                if (container.scrollTop === 0) {
+                    this.fetchMoreMessages();
+                }
+            });
+        }
+        
+        async fetchMoreMessages() {
+            const currentMessages = document.querySelectorAll('.message-item');
+            const oldestMessageId = currentMessages[0]?.dataset.messageId;
+            
+            try {
+                const response = await fetch(`/chat/room/${this.config.roomId}/messages/?before=${oldestMessageId}`);
+                const messages = await response.json();
+                
+                if (messages.length > 0) {
+                    const fragment = document.createDocumentFragment();
+                    messages.reverse().forEach(msg => {
+                        const messageHTML = this.createMessageHTML(msg);
+                        fragment.insertAdjacentHTML('afterbegin', messageHTML);
+                    });
+                    
+                    const container = document.getElementById('chat-messages');
+                    container.insertBefore(fragment, container.firstChild);
+                    
+                    // Maintain scroll position
+                    const newFirstMessage = document.querySelector('.message-item');
+                    if (newFirstMessage) {
+                        container.scrollTop = newFirstMessage.offsetHeight * messages.length;
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load more messages:', error);
+            }
+        }
+        
+        setupInfiniteScroll() {
+            let isLoading = false;
+            
+            window.addEventListener('scroll', () => {
+                if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 500 && !isLoading) {
+                    isLoading = true;
+                    this.fetchMoreMessages().finally(() => {
+                        isLoading = false;
+                    });
+                }
+            });
+        }
+        
+        setupEventListeners() {
+            const messageInput = document.getElementById('message-input');
+            const messageForm = document.getElementById('message-form');
+            
+            if (messageInput) {
+                // Typing detection
+                messageInput.addEventListener('input', () => {
+                    this.sendTypingStatus(messageInput.value.length > 0);
+                });
+                
+                // Send message on Ctrl+Enter
+                messageInput.addEventListener('keydown', (e) => {
+                    if (e.ctrlKey && e.key === 'Enter') {
+                        e.preventDefault();
+                        this.sendMessage(messageInput.value);
+                    }
+                });
+            }
+            
+            if (messageForm) {
+                messageForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.sendMessage(messageInput.value);
+                });
+            }
+            
+            // File upload
+            const fileInput = document.getElementById('file-input');
+            if (fileInput) {
+                fileInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        this.sendMessage('', 'file', file);
+                    }
+                });
+            }
+            
+            // Image paste
+            document.addEventListener('paste', (e) => {
+                const items = e.clipboardData.items;
+                for (const item of items) {
+                    if (item.type.indexOf('image') !== -1) {
+                        const file = item.getAsFile();
+                        this.sendMessage('', 'image', file);
+                        break;
+                    }
+                }
+            });
+        }
+    }
+    
+    // Initialize enhanced chat
+    document.addEventListener('DOMContentLoaded', () => {
+        const roomData = document.getElementById('room-data');
+        if (roomData) {
+            const config = {
+                roomId: parseInt(roomData.dataset.roomId),
+                roomType: roomData.dataset.roomType,
+                currentUserId: parseInt(roomData.dataset.currentUserId),
+                isGroupChat: roomData.dataset.isGroup === 'true'
+            };
+            
+            window.chat = new EnhancedChat(config);
+        }
+        
+        // Initialize message context menu
+        initMessageContextMenu();
+        
+        // Initialize emoji picker
+        initEmojiPicker();
+        
+        // Initialize voice recording
+        initVoiceRecording();
     });
     
-    // UI Initialization
-    function initializeUI() {
-        // Sidebar toggle
-        document.getElementById('toggle-sidebar').addEventListener('click', toggleSidebar);
-        document.getElementById('close-sidebar').addEventListener('click', toggleSidebar);
-        
-        // Options menu toggle
-        document.getElementById('chat-options-btn').addEventListener('click', function(e) {
-            e.stopPropagation();
-            const menu = document.getElementById('chat-options-menu');
-            menu.classList.toggle('hidden');
+    // Message context menu
+    function initMessageContextMenu() {
+        document.addEventListener('contextmenu', (e) => {
+            const messageBubble = e.target.closest('.message-bubble');
+            if (messageBubble) {
+                e.preventDefault();
+                showMessageContextMenu(e, messageBubble);
+            }
         });
+    }
+    
+    function showMessageContextMenu(event, messageElement) {
+        const menu = document.createElement('div');
+        menu.className = 'fixed bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 py-1';
+        menu.style.top = `${event.clientY}px`;
+        menu.style.left = `${event.clientX}px`;
         
-        // Close menu when clicking outside
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('#chat-options-btn') && !e.target.closest('#chat-options-menu')) {
-                document.getElementById('chat-options-menu').classList.add('hidden');
+        const messageId = messageElement.closest('.message-item').dataset.messageId;
+        const isSender = messageElement.classList.contains('message-sent');
+        
+        const menuItems = [
+            { 
+                icon: 'fas fa-reply', 
+                text: 'Reply', 
+                action: () => replyToMessage(messageId) 
+            },
+            { 
+                icon: 'fas fa-share', 
+                text: 'Forward', 
+                action: () => forwardMessage(messageId) 
+            },
+            { 
+                icon: 'fas fa-copy', 
+                text: 'Copy', 
+                action: () => copyMessage(messageId) 
+            },
+            { 
+                icon: 'fas fa-thumbtack', 
+                text: 'Pin', 
+                action: () => pinMessage(messageId) 
+            },
+            { 
+                icon: 'fas fa-star', 
+                text: 'Save', 
+                action: () => saveMessage(messageId) 
+            },
+            { separator: true },
+            { 
+                icon: 'fas fa-trash', 
+                text: 'Delete', 
+                action: () => deleteMessage(messageId),
+                className: 'text-red-600'
+            }
+        ];
+        
+        menuItems.forEach(item => {
+            if (item.separator) {
+                menu.innerHTML += '<hr class="my-1 border-gray-200 dark:border-gray-700">';
+            } else {
+                menu.innerHTML += `
+                    <button onclick="this.parentElement.remove(); ${item.action.toString().replace('()', '')}"
+                            class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center ${item.className || ''}">
+                        <i class="${item.icon} mr-3"></i>
+                        ${item.text}
+                    </button>
+                `;
             }
         });
         
-        // Message input auto-resize
-        const messageInput = document.getElementById('message-input');
-        if (messageInput) {
-            messageInput.addEventListener('input', function() {
-                autoResize(this);
-                updateSendButton();
-            });
-            
-            messageInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    document.getElementById('message-form').dispatchEvent(new Event('submit'));
-                }
-            });
-        }
+        document.body.appendChild(menu);
         
-        // Tooltips
-        initTooltips();
-    }
-    
-    // Auto-resize textarea
-    function autoResize(textarea) {
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 128) + 'px';
-    }
-    
-    // Update send button state
-    function updateSendButton() {
-        const input = document.getElementById('message-input');
-        const button = document.getElementById('send-btn');
-        if (input && button) {
-            button.disabled = !input.value.trim();
-        }
-    }
-    
-    // Toggle sidebar
-    function toggleSidebar() {
-        const sidebar = document.getElementById('members-sidebar');
-        sidebar.classList.toggle('hidden');
-    }
-    
-    // Toggle emoji picker (placeholder)
-    function toggleEmojiPicker() {
-        // Implement emoji picker logic here
-        console.log('Emoji picker toggled');
-    }
-    
-    // Initialize tooltips
-    function initTooltips() {
-        const tooltips = document.querySelectorAll('.tooltip');
-        tooltips.forEach(tooltip => {
-            const text = tooltip.dataset.tooltip;
-            tooltip.addEventListener('mouseenter', function(e) {
-                const tip = document.createElement('div');
-                tip.className = 'fixed z-50 px-2 py-1 text-xs bg-gray-900 text-white rounded shadow-lg';
-                tip.textContent = text;
-                document.body.appendChild(tip);
-                
-                const rect = this.getBoundingClientRect();
-                tip.style.top = (rect.top - tip.offsetHeight - 5) + 'px';
-                tip.style.left = (rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
-                
-                this._tooltip = tip;
-            });
-            
-            tooltip.addEventListener('mouseleave', function() {
-                if (this._tooltip) {
-                    this._tooltip.remove();
-                    this._tooltip = null;
+        // Close menu when clicking outside
+        setTimeout(() => {
+            const closeMenu = (e) => {
+                if (!menu.contains(e.target)) {
+                    menu.remove();
+                    document.removeEventListener('click', closeMenu);
                 }
-            });
+            };
+            document.addEventListener('click', closeMenu);
         });
     }
     
-    // Scroll to bottom on load
-    setTimeout(() => {
-        const container = document.getElementById('chat-messages');
-        if (container) {
-            container.scrollTop = container.scrollHeight;
+    // Emoji picker
+    function initEmojiPicker() {
+        const emojiButton = document.querySelector('[onclick="toggleEmojiPicker()"]');
+        if (emojiButton) {
+            emojiButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const picker = document.getElementById('emoji-picker') || createEmojiPicker();
+                picker.classList.toggle('hidden');
+            });
         }
-    }, 100);
+    }
+    
+    function createEmojiPicker() {
+        const emojis = ['😀', '😂', '🥰', '😎', '😜', '🤔', '😮', '😢', '😡', '👍', '❤️', '🔥', '🎉', '💯'];
+        
+        const picker = document.createElement('div');
+        picker.id = 'emoji-picker';
+        picker.className = 'fixed bottom-20 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-2 grid grid-cols-6 gap-2 z-50';
+        
+        emojis.forEach(emoji => {
+            const button = document.createElement('button');
+            button.className = 'w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded';
+            button.textContent = emoji;
+            button.onclick = () => {
+                const input = document.getElementById('message-input');
+                if (input) {
+                    input.value += emoji;
+                    input.focus();
+                }
+                picker.classList.add('hidden');
+            };
+            picker.appendChild(button);
+        });
+        
+        document.body.appendChild(picker);
+        
+        // Close picker when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!picker.contains(e.target) && !e.target.closest('[onclick="toggleEmojiPicker()"]')) {
+                picker.classList.add('hidden');
+            }
+        });
+        
+        return picker;
+    }
+    
+    // Voice recording
+    function initVoiceRecording() {
+        const voiceButton = document.getElementById('voice-record-button');
+        if (!voiceButton) return;
+        
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+        
+        voiceButton.addEventListener('mousedown', startRecording);
+        voiceButton.addEventListener('touchstart', startRecording);
+        
+        document.addEventListener('mouseup', stopRecording);
+        document.addEventListener('touchend', stopRecording);
+        
+        async function startRecording(e) {
+            e.preventDefault();
+            
+            if (isRecording) return;
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await sendVoiceMessage(audioBlob);
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                
+                mediaRecorder.start();
+                isRecording = true;
+                voiceButton.classList.add('recording');
+                
+                // Visual feedback
+                showRecordingIndicator();
+            } catch (error) {
+                console.error('Recording failed:', error);
+                showNotification('Microphone access denied', 'error');
+            }
+        }
+        
+        function stopRecording() {
+            if (isRecording && mediaRecorder) {
+                mediaRecorder.stop();
+                isRecording = false;
+                voiceButton.classList.remove('recording');
+                hideRecordingIndicator();
+            }
+        }
+        
+        function showRecordingIndicator() {
+            const indicator = document.createElement('div');
+            indicator.id = 'recording-indicator';
+            indicator.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-full flex items-center space-x-2';
+            indicator.innerHTML = `
+                <div class="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                <span>Recording...</span>
+            `;
+            document.body.appendChild(indicator);
+        }
+        
+        function hideRecordingIndicator() {
+            const indicator = document.getElementById('recording-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+        
+        async function sendVoiceMessage(audioBlob) {
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'voice-message.webm');
+            formData.append('room_id', window.chat.config.roomId);
+            
+            try {
+                const response = await fetch('/chat/send-voice/', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': getCSRFToken()
+                    }
+                });
+                
+                if (response.ok) {
+                    showNotification('Voice message sent', 'success');
+                }
+            } catch (error) {
+                console.error('Failed to send voice message:', error);
+                showNotification('Failed to send voice message', 'error');
+            }
+        }
+    }
+    
+    // Utility functions
+    async function toggleReaction(messageId, reaction) {
+        try {
+            const response = await fetch(`/chat/message/${messageId}/react/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: JSON.stringify({ reaction })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                updateReactionUI(messageId, data.reaction, data.reaction_count);
+            }
+        } catch (error) {
+            console.error('Failed to toggle reaction:', error);
+        }
+    }
+    
+    async function pinMessage(messageId) {
+        try {
+            const response = await fetch(`/chat/message/${messageId}/pin/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCSRFToken()
+                }
+            });
+            
+            if (response.ok) {
+                showNotification('Message pinned', 'success');
+                updatePinnedMessages();
+            }
+        } catch (error) {
+            console.error('Failed to pin message:', error);
+        }
+    }
+    
+    async function deleteMessage(messageId) {
+        if (!confirm('Are you sure you want to delete this message?')) return;
+        
+        try {
+            const response = await fetch(`/chat/message/${messageId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCSRFToken()
+                }
+            });
+            
+            if (response.ok) {
+                // Remove message from UI
+                const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+                if (messageElement) {
+                    messageElement.classList.add('opacity-50');
+                    setTimeout(() => messageElement.remove(), 300);
+                }
+                showNotification('Message deleted', 'success');
+            }
+        } catch (error) {
+            console.error('Failed to delete message:', error);
+        }
+    }
+    
+    function replyToMessage(messageId) {
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"] .message-bubble`);
+        if (messageElement) {
+            const content = messageElement.querySelector('.message-content')?.textContent || '';
+            const sender = messageElement.closest('.message-item').querySelector('.message-sender')?.textContent || '';
+            
+            // Show reply preview
+            const preview = document.getElementById('reply-preview') || createReplyPreview();
+            preview.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <i class="fas fa-reply text-primary-500"></i>
+                        <div>
+                            <p class="text-sm font-medium">Replying to ${sender}</p>
+                            <p class="text-xs text-gray-500 truncate">${content.substring(0, 50)}...</p>
+                        </div>
+                    </div>
+                    <button onclick="cancelReply()" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+            preview.classList.remove('hidden');
+            
+            // Store reply data
+            window.currentReply = { messageId, sender, content };
+        }
+    }
+    
+    function createReplyPreview() {
+        const preview = document.createElement('div');
+        preview.id = 'reply-preview';
+        preview.className = 'bg-gray-50 dark:bg-gray-800 border-l-4 border-primary-500 p-3 mb-4 rounded-r-lg';
+        
+        const messageInput = document.getElementById('message-input');
+        if (messageInput) {
+            messageInput.parentElement.insertBefore(preview, messageInput);
+        }
+        
+        return preview;
+    }
+    
+    function cancelReply() {
+        const preview = document.getElementById('reply-preview');
+        if (preview) {
+            preview.classList.add('hidden');
+        }
+        window.currentReply = null;
+    }
+    
+    function forwardMessage(messageId) {
+        // Open forward modal
+        showForwardModal(messageId);
+    }
+    
+    function showForwardModal(messageId) {
+        const modalHTML = `
+            <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md">
+                    <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Forward Message</h3>
+                            <button onclick="closeModal()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="mt-4">
+                            <input type="text" 
+                                   placeholder="Search chats..."
+                                   class="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg border-none focus:ring-2 focus:ring-primary-500">
+                        </div>
+                    </div>
+                    <div class="p-4 max-h-96 overflow-y-auto">
+                        <!-- Chat list for forwarding -->
+                        <div class="space-y-2">
+                            <!-- Chats will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="p-4 border-t border-gray-200 dark:border-gray-700">
+                        <button onclick="performForward('${messageId}')" 
+                                class="w-full py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium">
+                            Forward
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+    
+    async function performForward(messageId, chatIds) {
+        try {
+            const response = await fetch(`/chat/message/${messageId}/forward/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: JSON.stringify({ chat_ids: chatIds })
+            });
+            
+            if (response.ok) {
+                showNotification('Message forwarded', 'success');
+                closeModal();
+            }
+        } catch (error) {
+            console.error('Failed to forward message:', error);
+            showNotification('Failed to forward message', 'error');
+        }
+    }
+    
+    function copyMessage(messageId) {
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"] .message-content`);
+        if (messageElement) {
+            navigator.clipboard.writeText(messageElement.textContent)
+                .then(() => showNotification('Message copied', 'success'))
+                .catch(() => showNotification('Failed to copy', 'error'));
+        }
+    }
+    
+    function saveMessage(messageId) {
+        // Add to saved messages
+        const saved = JSON.parse(localStorage.getItem('saved_messages') || '[]');
+        if (!saved.includes(messageId)) {
+            saved.push(messageId);
+            localStorage.setItem('saved_messages', JSON.stringify(saved));
+            showNotification('Message saved', 'success');
+        } else {
+            showNotification('Message already saved', 'info');
+        }
+    }
+    
+    function openImageViewer(imageUrl) {
+        const viewerHTML = `
+            <div class="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+                <div class="relative max-w-4xl max-h-[90vh]">
+                    <img src="${imageUrl}" alt="Image" class="max-w-full max-h-full">
+                    <div class="absolute top-4 right-4 flex space-x-2">
+                        <a href="${imageUrl}" 
+                           download
+                           class="p-2 bg-white/20 hover:bg-white/40 rounded-full backdrop-blur-sm">
+                            <i class="fas fa-download text-white"></i>
+                        </a>
+                        <button onclick="closeImageViewer()" 
+                                class="p-2 bg-white/20 hover:bg-white/40 rounded-full backdrop-blur-sm">
+                            <i class="fas fa-times text-white"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', viewerHTML);
+    }
+    
+    function closeImageViewer() {
+        const viewer = document.querySelector('.fixed.inset-0.bg-black\\/90');
+        if (viewer) {
+            viewer.remove();
+        }
+    }
+    
+    function getCSRFToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+    }
 </script>
-{% endblock %}

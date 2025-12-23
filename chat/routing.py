@@ -1,7 +1,10 @@
-from django.urls import re_path
+# routing.py في مجلد chat
+
+from django.urls import path
 from . import consumers
 
 websocket_urlpatterns = [
-    re_path(r'ws/chat/(?P<room_id>\w+)/$', consumers.ChatConsumer.as_asgi()),
-    re_path(r'ws/notifications/$', consumers.NotificationConsumer.as_asgi()),
+    path('ws/chat/<int:room_id>/', consumers.EnhancedChatConsumer.as_asgi()),
+    path('ws/notifications/', consumers.NotificationConsumer.as_asgi()),
+    path('ws/call/<int:room_id>/', consumers.CallConsumer.as_asgi()),
 ]

@@ -1,146 +1,309 @@
-{% comment %} {% load static i18n chat_tags %} {% endcomment %}
-{% load static %}
-{% load i18n %}
+{% load i18n static %}
+<!-- base.html -->
 <!DOCTYPE html>
-<html lang="{{ request.LANGUAGE_CODE }}" dir="{% if request.LANGUAGE_CODE == 'ar' %}rtl{% else %}ltr{% endif %}">
+<html lang="{{ LANGUAGE_CODE|default:'en' }}" dir="{% if LANGUAGE_CODE == 'ar' %}rtl{% else %}ltr{% endif %}" class="{% if theme == 'dark' %}dark{% elif theme == 'auto' %}auto-theme{% endif %}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Real-Time Chat{% endblock %}</title>
     
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        primary: {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            200: '#bfdbfe',
-                            300: '#93c5fd',
-                            400: '#60a5fa',
-                            500: '#3b82f6',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                            800: '#1e40af',
-                            900: '#1e3a8a',
-                        }
-                    },
-                    fontFamily: {
-                        'sans': ['Inter', 'system-ui', 'sans-serif'],
-                        'arabic': ['Cairo', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
+    <link rel="apple-touch-icon" href="{% static 'images/apple-touch-icon.png' %}">
     
     <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
     <!-- Custom CSS -->
-    <style>
-        .message-bubble {
-            max-width: 70%;
-            word-wrap: break-word;
-        }
-        
-        .scrollbar-thin {
-            scrollbar-width: thin;
-        }
-        
-        .scrollbar-thin::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        .scrollbar-thin::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        
-        .scrollbar-thin::-webkit-scrollbar-thumb {
-            background: #6b7280;
-            border-radius: 3px;
-        }
-        
-        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-            background: #4b5563;
-        }
-        
-        /* RTL specific styles */
-        [dir="rtl"] .space-x-3 > :not([hidden]) ~ :not([hidden]) {
-            --tw-space-x-reverse: 1;
-        }
-        
-        [dir="rtl"] .text-right {
-            text-align: left;
-        }
-        
-        [dir="rtl"] .text-left {
-            text-align: right;
-        }
-    </style>
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
     
     {% block extra_css %}{% endblock %}
+    
+    <!-- PWA -->
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <meta name="theme-color" content="#3b82f6">
+    
+    <!-- CSRF Token -->
+    <meta name="csrf-token" content="{{ csrf_token }}">
 </head>
-<body class="{% if request.user.profile.theme == 'dark' or not request.user.is_authenticated %}dark bg-gray-900{% else %}bg-gray-100{% endif %} font-{% if request.LANGUAGE_CODE == 'ar' %}arabic{% else %}sans{% endif %}">
-    <!-- Dark mode class -->
-    <div class="{% if request.user.profile.theme == 'dark' or not request.user.is_authenticated %}dark{% endif %}">
-        {% if request.user.is_authenticated %}
-            {% include 'partials/navbar.html' %}
-        {% endif %}
-        
-        <main class="min-h-screen pt-16">
-            {% block content %}{% endblock %}
-        </main>
-        
-        {% include 'partials/footer.html' %}
+<body class="font-sans antialiased bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-300">
+    
+    <!-- Loading Spinner -->
+    <div id="loading-spinner" class="fixed inset-0 bg-white dark:bg-gray-900 flex items-center justify-center z-50 transition-opacity duration-300">
+        <div class="text-center">
+            <div class="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-gray-600 dark:text-gray-400">{% trans "Loading..." %}</p>
+        </div>
     </div>
     
-    <!-- Messages -->
-    {% if messages %}
-        <div class="fixed bottom-4 right-4 z-50 space-y-2">
-            {% for message in messages %}
-                <div class="p-4 rounded-lg shadow-lg {% if message.tags == 'error' %}bg-red-500{% else %}bg-green-500{% endif %} text-white transform transition-all duration-300">
-                    {{ message }}
+    <!-- Navigation -->
+    <nav class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <a href="{% url 'chat:index' %}" class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-full bg-gradient-to-r from-primary-500 to-primary-600 flex items-center justify-center">
+                            <i class="fas fa-comments text-white"></i>
+                        </div>
+                        <span class="text-xl font-bold gradient-text">ChatApp</span>
+                    </a>
                 </div>
-            {% endfor %}
+                
+                <!-- Desktop Menu -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="{% url 'chat:index' %}" 
+                       class="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                        <i class="fas fa-home mr-2"></i>{% trans "Home" %}
+                    </a>
+                    <a href="{% url 'chat:notifications' %}" class="relative">
+                        <i class="fas fa-bell text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"></i>
+                        {% if notifications_count > 0 %}
+                            <span class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                                {{ notifications_count }}
+                            </span>
+                        {% endif %}
+                    </a>
+                    
+                    <!-- User Menu -->
+                    <div class="relative">
+                        <button id="user-menu-button" class="flex items-center space-x-2 focus:outline-none">
+                            {% if request.user.profile.profile_picture %}
+                                <img src="{{ request.user.profile.profile_picture.url }}" 
+                                     alt="{{ request.user.username }}"
+                                     class="w-8 h-8 rounded-full object-cover">
+                            {% else %}
+                                <div class="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                                    <span class="text-white font-bold text-sm">
+                                        {{ request.user.username|first|upper }}
+                                    </span>
+                                </div>
+                            {% endif %}
+                            <span class="hidden lg:inline">{{ request.user.username }}</span>
+                            <i class="fas fa-chevron-down text-gray-400"></i>
+                        </button>
+                        
+                        <!-- Dropdown Menu -->
+                        <div id="user-menu" class="hidden absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-1 z-50">
+                            <a href="{% url 'chat:update_profile' %}" 
+                               class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <i class="fas fa-user-cog mr-3"></i>{% trans "Profile Settings" %}
+                            </a>
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <i class="fas fa-moon mr-3"></i>{% trans "Theme" %}
+                            </a>
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <i class="fas fa-language mr-3"></i>{% trans "Language" %}
+                            </a>
+                            <hr class="my-1 border-gray-200 dark:border-gray-700">
+                            <form method="post" action="#">
+                                {% csrf_token %}
+                                <button type="submit" 
+                                        class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30">
+                                    <i class="fas fa-sign-out-alt mr-3"></i>{% trans "Logout" %}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Mobile menu button -->
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="p-2 rounded-md text-gray-700 dark:text-gray-300">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
         </div>
-    {% endif %}
+        
+        <!-- Mobile menu -->
+        <div id="mobile-menu" class="hidden md:hidden bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+            <div class="px-2 pt-2 pb-3 space-y-1">
+                <a href="{% url 'chat:index' %}" 
+                   class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <i class="fas fa-home mr-2"></i>{% trans "Home" %}
+                </a>
+                <a href="{% url 'chat:notifications' %}" 
+                   class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <i class="fas fa-bell mr-2"></i>{% trans "Notifications" %}
+                    {% if notifications_count > 0 %}
+                        <span class="ml-2 px-2 py-1 text-xs bg-red-500 text-white rounded-full">
+                            {{ notifications_count }}
+                        </span>
+                    {% endif %}
+                </a>
+                <a href="{% url 'chat:update_profile' %}" 
+                   class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <i class="fas fa-user-cog mr-2"></i>{% trans "Profile" %}
+                </a>
+                <form method="post" action="#">
+                    {% csrf_token %}
+                    <button type="submit" 
+                            class="w-full text-left block px-3 py-2 rounded-md text-base font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30">
+                        <i class="fas fa-sign-out-alt mr-2"></i>{% trans "Logout" %}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main class="flex-1">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Footer -->
+    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-8">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <p class="text-gray-600 dark:text-gray-400 text-sm">
+                        &copy; {% now "Y" %} ChatApp. {% trans "All rights reserved." %}
+                    </p>
+                </div>
+                <div class="flex space-x-6">
+                    <a href="#" class="text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 text-sm">
+                        {% trans "Privacy Policy" %}
+                    </a>
+                    <a href="#" class="text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 text-sm">
+                        {% trans "Terms of Service" %}
+                    </a>
+                    <a href="#" class="text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 text-sm">
+                        {% trans "Contact" %}
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
     
     <!-- JavaScript -->
-    <script src="{% static 'js/chat.js' %}"></script>
+    <script src="{% static 'js/main.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+    
     <script>
-        // Set CSRF token for AJAX requests
-        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        // Initialize theme
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const html = document.documentElement;
+            
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark && html.classList.contains('auto-theme'))) {
+                html.classList.add('dark');
+            }
+        }
         
-        // Theme toggle
+        // Toggle theme
         function toggleTheme() {
             const html = document.documentElement;
-            html.classList.toggle('dark');
+            const isDark = html.classList.contains('dark');
             
-            // Update via AJAX
-            fetch('{% url "chat:update_profile" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrftoken,
-                },
-                body: JSON.stringify({
-                    theme: html.classList.contains('dark') ? 'dark' : 'light'
-                })
+            if (isDark) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+            
+            // Send to server
+            updateThemePreference(!isDark ? 'dark' : 'light');
+        }
+        
+        // Update theme on server
+        async function updateThemePreference(theme) {
+            try {
+                await fetch('{% url "chat:update_profile" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}',
+                    },
+                    body: JSON.stringify({ theme: theme })
+                });
+            } catch (error) {
+                console.error('Failed to update theme:', error);
+            }
+        }
+        
+        // Hide loading spinner
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const spinner = document.getElementById('loading-spinner');
+                if (spinner) {
+                    spinner.style.opacity = '0';
+                    setTimeout(() => spinner.style.display = 'none', 300);
+                }
+            }, 500);
+        });
+        
+        // Mobile menu toggle
+        document.getElementById('mobile-menu-button')?.addEventListener('click', () => {
+            document.getElementById('mobile-menu').classList.toggle('hidden');
+        });
+        
+        // User menu toggle
+        document.getElementById('user-menu-button')?.addEventListener('click', () => {
+            document.getElementById('user-menu').classList.toggle('hidden');
+        });
+        
+        // Close menus when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#user-menu-button') && !e.target.closest('#user-menu')) {
+                document.getElementById('user-menu').classList.add('hidden');
+            }
+        });
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            
+            // Add active class to current page
+            const currentPath = window.location.pathname;
+            document.querySelectorAll('nav a').forEach(link => {
+                if (link.getAttribute('href') === currentPath) {
+                    link.classList.add('text-primary-600', 'dark:text-primary-400');
+                }
+            });
+        });
+        
+        // Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('{% static "js/service-worker.js" %}')
+                    .then(registration => {
+                        console.log('ServiceWorker registered:', registration);
+                    })
+                    .catch(error => {
+                        console.log('ServiceWorker registration failed:', error);
+                    });
             });
         }
         
+        // Install prompt for PWA
+        let deferredPrompt;
+        const installButton = document.getElementById('install-button');
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            if (installButton) {
+                installButton.style.display = 'block';
+                installButton.addEventListener('click', () => {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then((choiceResult) => {
+                        if (choiceResult.outcome === 'accepted') {
+                            console.log('User accepted install');
+                        }
+                        deferredPrompt = null;
+                    });
+                });
+            }
+        });
     </script>
-    
-    {% block extra_js %}{% endblock %}
 </body>
 </html>
