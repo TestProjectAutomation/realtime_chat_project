@@ -1,0 +1,231 @@
+{% extends 'base.html' %}
+{% load i18n static %}
+
+{% block title %}{% trans "Chat Dashboard" %}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <!-- Sidebar -->
+        <div class="lg:col-span-1 space-y-6">
+            <!-- User Profile Card -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                <div class="flex items-center space-x-4">
+                    <div class="relative">
+                        <img src="{{ profile.profile_picture.url|default:'https://via.placeholder.com/50' }}" 
+                             alt="{{ request.user.username }}" 
+                             class="w-12 h-12 rounded-full object-cover">
+                        {% if profile.is_online %}
+                            <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-gray-900 dark:text-white">{{ request.user.get_full_name|default:request.user.username }}</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            {% if profile.is_online %}
+                                <span class="text-green-500">●</span> {% trans "Online" %}
+                            {% else %}
+                                <span class="text-gray-400">●</span> {% trans "Last seen" %} {{ profile.last_seen|timesince }} {% trans "ago" %}
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="mt-6 space-y-3">
+                    <button onclick="toggleTheme()" 
+                            class="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">
+                        <i class="fas fa-moon"></i>
+                        <span>{% trans "Toggle Theme" %}</span>
+                    </button>
+                    
+                    <a href="{% url 'chat:update_profile' %}" 
+                       class="block w-full text-center px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors">
+                        {% trans "Edit Profile" %}
+                    </a>
+                    
+                    <a href="{% url 'chat:create_group_chat' %}" 
+                       class="block w-full text-center px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors">
+                        <i class="fas fa-users mr-2"></i>
+                        {% trans "New Group" %}
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Chat Rooms -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="font-semibold text-gray-900 dark:text-white">{% trans "Chats" %}</h3>
+                </div>
+                
+                <div class="divide-y divide-gray-200 dark:divide-gray-700 max-h-[500px] overflow-y-auto scrollbar-thin">
+                    {% for room in chat_rooms %}
+                        <a href="{% url 'chat:room_detail' room.id %}" 
+                           class="flex items-center p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors {% if request.path == room.get_absolute_url %}bg-gray-50 dark:bg-gray-700{% endif %}">
+                            <div class="flex-shrink-0 relative">
+                                {% if room.room_type == 'direct' %}
+                                    {% with other_user=room.get_other_participant request.user %}
+                                        {% if other_user %}
+                                            <img src="{{ other_user.profile.profile_picture.url|default:'https://via.placeholder.com/40' }}" 
+                                                 alt="{{ other_user.username }}" 
+                                                 class="w-10 h-10 rounded-full object-cover">
+                                            {% if other_user.profile.is_online %}
+                                                <div class="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full border border-white dark:border-gray-800"></div>
+                                            {% endif %}
+                                        {% else %}
+                                            <div class="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                                                <i class="fas fa-user text-gray-500 dark:text-gray-400"></i>
+                                            </div>
+                                        {% endif %}
+                                    {% endwith %}
+                                {% else %}
+                                    <div class="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+                                        <i class="fas fa-users text-primary-600 dark:text-primary-400"></i>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="flex-1 ml-4 min-w-0">
+                                <div class="flex justify-between items-center">
+                                    <p class="font-medium text-gray-900 dark:text-white truncate">
+                                        {% if room.room_type == 'direct' %}
+                                            {% with other_user=room.get_other_participant request.user %}
+                                                {% if other_user %}
+                                                    {{ other_user.get_full_name|default:other_user.username }}
+                                                {% else %}
+                                                    {% trans "Unknown User" %}
+                                                {% endif %}
+                                            {% endwith %}
+                                        {% else %}
+                                            {{ room.name|default:"Group Chat" }}
+                                        {% endif %}
+                                    </p>
+                                    {% if room.last_message_time %}
+                                        <span class="text-xs text-gray-500 dark:text-gray-400">
+                                            {{ room.last_message_time|timesince }} {% trans "ago" %}
+                                        </span>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="flex justify-between items-center mt-1">
+                                    <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
+                                        {% if room.last_message %}
+                                            {{ room.last_message.content|truncatechars:30 }}
+                                        {% else %}
+                                            {% trans "No messages yet" %}
+                                        {% endif %}
+                                    </p>
+                                    
+                                    {% if room.unread_count > 0 %}
+                                        <span class="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-primary-500 rounded-full">
+                                            {{ room.unread_count }}
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </a>
+                    {% empty %}
+                        <div class="p-8 text-center">
+                            <i class="fas fa-comments text-gray-400 text-4xl mb-4"></i>
+                            <p class="text-gray-500 dark:text-gray-400">{% trans "No chats yet" %}</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="lg:col-span-3">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg h-[calc(100vh-12rem)]">
+                <!-- Welcome Message -->
+                <div class="h-full flex flex-col items-center justify-center p-8 text-center">
+                    <div class="w-24 h-24 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center mb-6">
+                        <i class="fas fa-comments text-primary-600 dark:text-primary-400 text-4xl"></i>
+                    </div>
+                    
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+                        {% trans "Welcome to Real-Time Chat" %}
+                    </h2>
+                    
+                    <p class="text-gray-600 dark:text-gray-400 max-w-md mb-8">
+                        {% trans "Select a chat from the sidebar or start a new conversation with someone." %}
+                    </p>
+                    
+                    <!-- Users List -->
+                    <div class="w-full max-w-2xl">
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                            {% trans "Start New Chat" %}
+                        </h3>
+                        
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {% for user in other_users %}
+                                <a href="{% url 'chat:start_chat' user.id %}" 
+                                   class="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-xl transition-colors">
+                                    <div class="relative mb-2">
+                                        <img src="{{ user.profile.profile_picture.url|default:'https://via.placeholder.com/40' }}" 
+                                             alt="{{ user.username }}" 
+                                             class="w-12 h-12 rounded-full object-cover">
+                                        {% if user.profile.is_online %}
+                                            <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                                        {% endif %}
+                                    </div>
+                                    <p class="text-sm font-medium text-gray-900 dark:text-white text-center truncate w-full">
+                                        {{ user.get_full_name|default:user.username }}
+                                    </p>
+                                    {% if user.has_chat %}
+                                        <span class="mt-1 text-xs text-primary-600 dark:text-primary-400">
+                                            <i class="fas fa-comment mr-1"></i> {% trans "Chat" %}
+                                        </span>
+                                    {% endif %}
+                                </a>
+                            {% empty %}
+                                <p class="col-span-full text-gray-500 dark:text-gray-400 text-center py-8">
+                                    {% trans "No other users found" %}
+                                </p>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Toggle theme function
+    function toggleTheme() {
+        const html = document.documentElement;
+        const isDark = html.classList.contains('dark');
+        
+        if (isDark) {
+            html.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+        } else {
+            html.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+        }
+        
+        // Send theme update to server
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        if (csrfToken) {
+            fetch('{% url "chat:update_profile" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify({
+                    theme: isDark ? 'light' : 'dark'
+                })
+            });
+        }
+    }
+    
+    // Initialize theme from localStorage
+    document.addEventListener('DOMContentLoaded', function() {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    });
+</script>
+{% endblock %}

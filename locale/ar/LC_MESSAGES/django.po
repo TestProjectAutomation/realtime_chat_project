@@ -1,0 +1,30 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ar\n"
+
+#: .\blog\forms.py:11
+#: .\blog\forms.py:16
+msgid "Name"
+msgstr "الاسم"
+
+#: .\blog\forms.py:12
+#: .\blog\forms.py:17
+msgid "Email"
+msgstr "البريد الإلكتروني"
+
+#: .\blog\forms.py:13
+#: .\blog\forms.py:18
+msgid "Comment"
+msgstr "التعليق"
+
+#: .\codeanyway\settings.py:134
+msgid "Arabic"
+msgstr "العربية"
+
+#: .\codeanyway\settings.py:135
+msgid "English"
+msgstr "الإنجليزية"
+
+msgid "Tags"
+msgstr "وسوم"  # للغة العربية

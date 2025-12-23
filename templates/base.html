@@ -1,0 +1,146 @@
+{% comment %} {% load static i18n chat_tags %} {% endcomment %}
+{% load static %}
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="{{ request.LANGUAGE_CODE }}" dir="{% if request.LANGUAGE_CODE == 'ar' %}rtl{% else %}ltr{% endif %}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Real-Time Chat{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'arabic': ['Cairo', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <style>
+        .message-bubble {
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        
+        .scrollbar-thin {
+            scrollbar-width: thin;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #6b7280;
+            border-radius: 3px;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #4b5563;
+        }
+        
+        /* RTL specific styles */
+        [dir="rtl"] .space-x-3 > :not([hidden]) ~ :not([hidden]) {
+            --tw-space-x-reverse: 1;
+        }
+        
+        [dir="rtl"] .text-right {
+            text-align: left;
+        }
+        
+        [dir="rtl"] .text-left {
+            text-align: right;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="{% if request.user.profile.theme == 'dark' or not request.user.is_authenticated %}dark bg-gray-900{% else %}bg-gray-100{% endif %} font-{% if request.LANGUAGE_CODE == 'ar' %}arabic{% else %}sans{% endif %}">
+    <!-- Dark mode class -->
+    <div class="{% if request.user.profile.theme == 'dark' or not request.user.is_authenticated %}dark{% endif %}">
+        {% if request.user.is_authenticated %}
+            {% include 'partials/navbar.html' %}
+        {% endif %}
+        
+        <main class="min-h-screen pt-16">
+            {% block content %}{% endblock %}
+        </main>
+        
+        {% include 'partials/footer.html' %}
+    </div>
+    
+    <!-- Messages -->
+    {% if messages %}
+        <div class="fixed bottom-4 right-4 z-50 space-y-2">
+            {% for message in messages %}
+                <div class="p-4 rounded-lg shadow-lg {% if message.tags == 'error' %}bg-red-500{% else %}bg-green-500{% endif %} text-white transform transition-all duration-300">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    
+    <!-- JavaScript -->
+    <script src="{% static 'js/chat.js' %}"></script>
+    <script>
+        // Set CSRF token for AJAX requests
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        
+        // Theme toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            html.classList.toggle('dark');
+            
+            // Update via AJAX
+            fetch('{% url "chat:update_profile" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken,
+                },
+                body: JSON.stringify({
+                    theme: html.classList.contains('dark') ? 'dark' : 'light'
+                })
+            });
+        }
+        
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

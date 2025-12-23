@@ -1,0 +1,20 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+django = "*"
+channels = "*"
+channels-redis = "*"
+daphne = "*"
+djangorestframework = "*"
+crispy-tailwind = "*"
+python-decouple = "*"
+django-model-utils = "*"
+psycopg = {extras = ["binary"], version = "*"}
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"

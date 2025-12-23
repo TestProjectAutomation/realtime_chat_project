@@ -1,0 +1,300 @@
+{% load static i18n crispy_forms_tags %}
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE|default:'en' }}" dir="{% if LANGUAGE_CODE == 'ar' %}rtl{% else %}ltr{% endif %}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% trans "Login" %} - Real-Time Chat</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: {% if LANGUAGE_CODE == 'ar' %}'Cairo', sans-serif{% else %}'Inter', sans-serif{% endif %};
+        }
+        
+        [dir="rtl"] .space-x-4 > :not([hidden]) ~ :not([hidden]) {
+            --tw-space-x-reverse: 1;
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .card-shadow {
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+        }
+        
+        .input-focus:focus {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center gradient-bg p-4">
+    <!-- Language Switcher -->
+    <div class="absolute top-4 right-4 z-10">
+        <div class="flex items-center space-x-2 bg-white dark:bg-gray-800 rounded-full px-3 py-2 shadow-lg">
+            <i class="fas fa-globe text-gray-600 dark:text-gray-300"></i>
+            <select id="language-select" onchange="setLanguage(this.value)" 
+                    class="bg-transparent border-none focus:outline-none text-gray-700 dark:text-gray-300">
+                <option value="en" {% if LANGUAGE_CODE == 'en' %}selected{% endif %}>English</option>
+                <option value="ar" {% if LANGUAGE_CODE == 'ar' %}selected{% endif %}>العربية</option>
+            </select>
+        </div>
+    </div>
+    
+    <!-- Theme Toggle -->
+    <button onclick="toggleTheme()" 
+            class="absolute top-4 left-4 z-10 p-3 bg-white dark:bg-gray-800 rounded-full shadow-lg hover:shadow-xl transition-shadow">
+        <i id="theme-icon" class="fas fa-moon text-gray-600 dark:text-yellow-400"></i>
+    </button>
+
+    <div class="w-full max-w-md">
+        <!-- Login Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-2xl card-shadow overflow-hidden">
+            <!-- Header -->
+            <div class="p-8 text-center border-b border-gray-100 dark:border-gray-700">
+                <div class="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <i class="fas fa-comments text-white text-3xl"></i>
+                </div>
+                
+                <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                    {% trans "Welcome Back" %}
+                </h1>
+                <p class="text-gray-600 dark:text-gray-400">
+                    {% trans "Sign in to your chat account" %}
+                </p>
+            </div>
+
+            <!-- Login Form -->
+            <div class="p-8">
+                {% if form.errors %}
+                    <div class="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+                        <div class="flex items-center space-x-2 text-red-600 dark:text-red-400">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <span class="font-medium">
+                                {% trans "Invalid username or password" %}
+                            </span>
+                        </div>
+                        <p class="mt-1 text-sm text-red-500 dark:text-red-300">
+                            {% trans "Please try again or contact support" %}
+                        </p>
+                    </div>
+                {% endif %}
+
+                <form method="post" action="{% url 'login' %}">
+                    {% csrf_token %}
+                    
+                    <div class="space-y-6">
+                        <!-- Username/Email Field -->
+                        <div>
+                            <label for="id_username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                {% trans "Username or Email" %}
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}right-0 pr-3{% else %}left-0 pl-3{% endif %} flex items-center pointer-events-none">
+                                    <i class="fas fa-user text-gray-400"></i>
+                                </div>
+                                <input type="text" 
+                                       name="username" 
+                                       id="id_username" 
+                                       required
+                                       class="w-full {% if LANGUAGE_CODE == 'ar' %}pr-10 pl-4{% else %}pl-10 pr-4{% endif %} py-3 border border-gray-300 dark:border-gray-600 rounded-lg input-focus bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                       placeholder="{% trans 'Enter your username or email' %}"
+                                       autocomplete="username"
+                                       autofocus>
+                            </div>
+                        </div>
+
+                        <!-- Password Field -->
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <label for="id_password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    {% trans "Password" %}
+                                </label>
+                                <a href="#" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                                    {% trans "Forgot password?" %}
+                                </a>
+                            </div>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}right-0 pr-3{% else %}left-0 pl-3{% endif %} flex items-center pointer-events-none">
+                                    <i class="fas fa-lock text-gray-400"></i>
+                                </div>
+                                <input type="password" 
+                                       name="password" 
+                                       id="id_password" 
+                                       required
+                                       class="w-full {% if LANGUAGE_CODE == 'ar' %}pr-10 pl-4{% else %}pl-10 pr-4{% endif %} py-3 border border-gray-300 dark:border-gray-600 rounded-lg input-focus bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                       placeholder="{% trans 'Enter your password' %}"
+                                       autocomplete="current-password">
+                                <button type="button" 
+                                        onclick="togglePasswordVisibility()"
+                                        class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}left-0 pl-3{% else %}right-0 pr-3{% endif %} flex items-center">
+                                    <i id="password-toggle-icon" class="fas fa-eye text-gray-400 hover:text-gray-600"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Remember Me -->
+                        <div class="flex items-center">
+                            <input type="checkbox" 
+                                   name="remember" 
+                                   id="remember_me"
+                                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                            <label for="remember_me" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                                {% trans "Remember me" %}
+                            </label>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <button type="submit" 
+                                class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-300 transform hover:-translate-y-0.5">
+                            <i class="fas fa-sign-in-alt mr-2"></i>
+                            {% trans "Sign In" %}
+                        </button>
+                    </div>
+
+                    <input type="hidden" name="next" value="{{ next }}">
+                </form>
+
+                <!-- Divider -->
+                <div class="my-6 flex items-center">
+                    <div class="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                    <span class="mx-4 text-sm text-gray-500 dark:text-gray-400">
+                        {% trans "Or continue with" %}
+                    </span>
+                    <div class="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                </div>
+
+                <!-- Social Login -->
+                <div class="grid grid-cols-2 gap-4">
+                    <button type="button" 
+                            class="flex items-center justify-center space-x-2 p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <i class="fab fa-google text-red-500"></i>
+                        <span class="text-gray-700 dark:text-gray-300">Google</span>
+                    </button>
+                    <button type="button" 
+                            class="flex items-center justify-center space-x-2 p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <i class="fab fa-github text-gray-800 dark:text-gray-300"></i>
+                        <span class="text-gray-700 dark:text-gray-300">GitHub</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-8 py-6 bg-gray-50 dark:bg-gray-900/50 text-center">
+                <p class="text-gray-600 dark:text-gray-400">
+                    {% trans "Don't have an account?" %}
+                    <a href="{% url 'signup' %}" class="font-medium text-blue-600 dark:text-blue-400 hover:underline ml-1">
+                        {% trans "Sign up now" %}
+                    </a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Demo Credentials -->
+        <div class="mt-8 bg-white/20 dark:bg-black/20 backdrop-blur-sm rounded-xl p-6">
+            <h3 class="text-lg font-semibold text-white mb-3">
+                <i class="fas fa-info-circle mr-2"></i>
+                {% trans "Demo Credentials" %}
+            </h3>
+            <div class="space-y-2 text-white/90">
+                <div class="flex items-center space-x-2">
+                    <i class="fas fa-user w-4"></i>
+                    <span class="font-mono">admin</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <i class="fas fa-key w-4"></i>
+                    <span class="font-mono">admin123</span>
+                </div>
+            </div>
+            <p class="mt-4 text-sm text-white/80">
+                <i class="fas fa-exclamation-triangle mr-1"></i>
+                {% trans "Change these in production!" %}
+            </p>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // Set initial theme
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+            document.getElementById('theme-icon').className = 'fas fa-sun text-yellow-400';
+        } else {
+            document.documentElement.classList.remove('dark');
+            document.getElementById('theme-icon').className = 'fas fa-moon text-gray-600';
+        }
+
+        // Toggle theme
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+            
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                icon.className = 'fas fa-moon text-gray-600';
+                localStorage.theme = 'light';
+            } else {
+                html.classList.add('dark');
+                icon.className = 'fas fa-sun text-yellow-400';
+                localStorage.theme = 'dark';
+            }
+        }
+
+        // Toggle password visibility
+        function togglePasswordVisibility() {
+            const passwordInput = document.getElementById('id_password');
+            const icon = document.getElementById('password-toggle-icon');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                icon.className = 'fas fa-eye-slash text-gray-600';
+            } else {
+                passwordInput.type = 'password';
+                icon.className = 'fas fa-eye text-gray-400';
+            }
+        }
+
+        // Set language
+        function setLanguage(lang) {
+            fetch('/i18n/setlang/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value,
+                },
+                body: `language=${lang}`
+            }).then(() => {
+                window.location.reload();
+            });
+        }
+
+        // Auto-focus username field
+        document.addEventListener('DOMContentLoaded', function() {
+            const usernameField = document.getElementById('id_username');
+            if (usernameField) {
+                usernameField.focus();
+            }
+        });
+
+        // Form validation
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const username = document.getElementById('id_username').value.trim();
+            const password = document.getElementById('id_password').value;
+            
+            if (!username || !password) {
+                e.preventDefault();
+                alert('{% trans "Please fill in all required fields" %}');
+            }
+        });
+    </script>
+</body>
+</html>

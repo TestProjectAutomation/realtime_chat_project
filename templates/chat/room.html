@@ -1,0 +1,405 @@
+{% extends 'base.html' %}
+{% load i18n static %}
+
+{% block title %}{{ room.name|default:other_participant.get_full_name|default:other_participant.username }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chat-messages {
+        height: calc(100vh - 300px);
+    }
+    
+    .message-sent {
+        margin-left: auto;
+        background-color: #3b82f6;
+        color: white;
+        border-radius: 18px 18px 4px 18px;
+    }
+    
+    .message-received {
+        margin-right: auto;
+        background-color: #374151;
+        color: white;
+        border-radius: 18px 18px 18px 4px;
+    }
+    
+    [dir="rtl"] .message-sent {
+        margin-right: auto;
+        margin-left: 0;
+        border-radius: 18px 18px 18px 4px;
+    }
+    
+    [dir="rtl"] .message-received {
+        margin-left: auto;
+        margin-right: 0;
+        border-radius: 18px 18px 4px 18px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="h-screen flex flex-col">
+    <!-- Chat Header -->
+    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <a href="{% url 'chat:index' %}" class="lg:hidden">
+                    <i class="fas fa-arrow-left text-gray-600 dark:text-gray-400"></i>
+                </a>
+                
+                <div class="flex items-center space-x-3">
+                    <div class="relative">
+                        {% if room.room_type == 'direct' %}
+                            <img src="{{ other_participant.profile.profile_picture.url|default:'https://via.placeholder.com/40' }}" 
+                                 alt="{{ other_participant.username }}" 
+                                 class="w-10 h-10 rounded-full object-cover">
+                            {% if other_participant.profile.is_online %}
+                                <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                            {% endif %}
+                        {% else %}
+                            <div class="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+                                <i class="fas fa-users text-primary-600 dark:text-primary-400"></i>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div>
+                        <h2 class="font-semibold text-gray-900 dark:text-white">
+                            {% if room.room_type == 'direct' %}
+                                {{ other_participant.get_full_name|default:other_participant.username }}
+                            {% else %}
+                                {{ room.name }}
+                            {% endif %}
+                        </h2>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            {% if room.room_type == 'direct' and other_participant.profile.is_online %}
+                                <span class="text-green-500">●</span> {% trans "Online" %}
+                            {% elif room.room_type == 'group' %}
+                                {{ room.participants.count }} {% trans "members" %}
+                            {% else %}
+                                <span class="text-gray-400">●</span> {% trans "Offline" %}
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <button onclick="toggleSidebar()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                    <i class="fas fa-info-circle text-gray-600 dark:text-gray-400"></i>
+                </button>
+                
+                <div class="relative">
+                    <button onclick="toggleDropdown('chat-menu')" 
+                            class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <i class="fas fa-ellipsis-v text-gray-600 dark:text-gray-400"></i>
+                    </button>
+                    
+                    <div id="chat-menu" class="hidden absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                        <a href="#" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <i class="fas fa-users mr-2"></i> {% trans "View Members" %}
+                        </a>
+                        <a href="#" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <i class="fas fa-bell mr-2"></i> {% trans "Mute Notifications" %}
+                        </a>
+                        <div class="border-t border-gray-200 dark:border-gray-700"></div>
+                        <a href="#" class="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <i class="fas fa-trash mr-2"></i> {% trans "Delete Chat" %}
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Chat Messages -->
+    <div id="chat-messages" class="chat-messages flex-1 overflow-y-auto p-6 space-y-4 scrollbar-thin bg-gray-50 dark:bg-gray-900">
+        {% for message in page_obj %}
+            <div class="flex {% if message.sender == request.user %}justify-end{% else %}justify-start{% endif %}">
+                <div class="message-bubble px-4 py-3 {% if message.sender == request.user %}message-sent{% else %}message-received{% endif %}">
+                    {% if message.sender != request.user and room.room_type == 'group' %}
+                        <div class="font-semibold text-xs mb-1 opacity-75">
+                            {{ message.sender.get_full_name|default:message.sender.username }}
+                        </div>
+                    {% endif %}
+                    <div class="mb-1">{{ message.content|linebreaks }}</div>
+                    <div class="text-xs opacity-75 flex items-center space-x-2">
+                        <span>{{ message.created|time }}</span>
+                        {% if message.sender == request.user %}
+                            {% if message.is_read %}
+                                <i class="fas fa-check-double text-blue-300"></i>
+                            {% else %}
+                                <i class="fas fa-check text-gray-400"></i>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        
+        <!-- Typing indicator -->
+        <div id="typing-indicator" class="hidden justify-start">
+            <div class="message-bubble px-4 py-3 message-received">
+                <div class="flex space-x-1">
+                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150"></div>
+                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Message Input -->
+    <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
+        <form id="message-form" class="flex items-center space-x-4">
+            {% csrf_token %}
+            <input type="hidden" name="room_id" value="{{ room.id }}">
+            
+            <button type="button" class="p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
+                <i class="fas fa-plus text-gray-600 dark:text-gray-400"></i>
+            </button>
+            
+            <div class="flex-1">
+                <input type="text" 
+                       id="message-input" 
+                       name="message"
+                       placeholder="{% trans 'Type your message...' %}" 
+                       class="w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border-none rounded-full focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                       autocomplete="off">
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <button type="button" class="p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
+                    <i class="fas fa-smile text-gray-600 dark:text-gray-400"></i>
+                </button>
+                
+                <button type="submit" 
+                        class="p-3 bg-primary-500 hover:bg-primary-600 text-white rounded-full transition-colors">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Members Sidebar (Hidden on mobile) -->
+    <div id="members-sidebar" class="hidden lg:block fixed right-0 top-16 bottom-0 w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 p-6">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="font-semibold text-gray-900 dark:text-white">{% trans "Chat Members" %}</h3>
+            <button onclick="toggleSidebar()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                <i class="fas fa-times text-gray-600 dark:text-gray-400"></i>
+            </button>
+        </div>
+        
+        <div class="space-y-4">
+            {% for participant in room.participants.all %}
+                <div class="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <div class="relative">
+                            <img src="{{ participant.profile.profile_picture.url|default:'https://via.placeholder.com/40' }}" 
+                                 alt="{{ participant.username }}" 
+                                 class="w-10 h-10 rounded-full object-cover">
+                            {% if participant.profile.is_online %}
+                                <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-900 dark:text-white">
+                                {{ participant.get_full_name|default:participant.username }}
+                            </p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                {% if participant == request.user %}
+                                    {% trans "You" %}
+                                {% elif participant.profile.is_online %}
+                                    {% trans "Online" %}
+                                {% else %}
+                                    {% trans "Offline" %}
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    {% if participant != request.user %}
+                        <button class="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg">
+                            <i class="fas fa-ellipsis-v text-gray-600 dark:text-gray-400"></i>
+                        </button>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+    const roomId = {{ room.id }};
+    const currentUserId = {{ request.user.id }};
+    const isGroupChat = {{ room.room_type == 'group'|yesno:'true,false' }};
+    let typingTimeout;
+    let socket;
+    
+    // WebSocket connection
+    function connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/chat/${roomId}/`;
+        
+        socket = new WebSocket(wsUrl);
+        
+        socket.onopen = function() {
+            console.log('WebSocket connected');
+        };
+        
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        };
+        
+        socket.onclose = function() {
+            console.log('WebSocket disconnected. Reconnecting...');
+            setTimeout(connectWebSocket, 3000);
+        };
+        
+        socket.onerror = function(error) {
+            console.error('WebSocket error:', error);
+        };
+    }
+    
+    // Handle incoming messages
+    function handleWebSocketMessage(data) {
+        switch(data.type) {
+            case 'chat_message':
+                addMessage(data);
+                break;
+                
+            case 'typing':
+                showTypingIndicator(data);
+                break;
+                
+            case 'user_status':
+                updateUserStatus(data);
+                break;
+                
+            case 'read_receipt':
+                updateReadReceipt(data);
+                break;
+        }
+    }
+    
+    // Add message to chat
+    function addMessage(data) {
+        const messagesContainer = document.getElementById('chat-messages');
+        const isSent = data.sender_id == currentUserId;
+        
+        const messageHTML = `
+            <div class="flex ${isSent ? 'justify-end' : 'justify-start'}">
+                <div class="message-bubble px-4 py-3 ${isSent ? 'message-sent' : 'message-received'}">
+                    ${!isSent && isGroupChat ? `
+                        <div class="font-semibold text-xs mb-1 opacity-75">
+                            ${data.sender}
+                        </div>
+                    ` : ''}
+                    <div class="mb-1">${data.content.replace(/\n/g, '<br>')}</div>
+                    <div class="text-xs opacity-75 flex items-center space-x-2">
+                        <span>${new Date(data.timestamp).toLocaleTimeString()}</span>
+                        ${isSent ? '<i class="fas fa-check text-gray-400"></i>' : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        messagesContainer.insertAdjacentHTML('beforeend', messageHTML);
+        scrollToBottom();
+        
+        // Send read receipt
+        if (!isSent) {
+            socket.send(JSON.stringify({
+                type: 'read_receipt',
+                message_id: data.message_id
+            }));
+        }
+    }
+    
+    // Show typing indicator
+    function showTypingIndicator(data) {
+        const indicator = document.getElementById('typing-indicator');
+        
+        if (data.is_typing && data.user_id != currentUserId) {
+            indicator.classList.remove('hidden');
+            indicator.classList.add('flex');
+        } else {
+            indicator.classList.remove('flex');
+            indicator.classList.add('hidden');
+        }
+        
+        scrollToBottom();
+    }
+    
+    // Send message
+    document.getElementById('message-form').onsubmit = function(e) {
+        e.preventDefault();
+        
+        const input = document.getElementById('message-input');
+        const message = input.value.trim();
+        
+        if (message) {
+            socket.send(JSON.stringify({
+                type: 'chat_message',
+                message: message
+            }));
+            
+            input.value = '';
+        }
+    };
+    
+    // Typing indicator
+    document.getElementById('message-input').addEventListener('input', function() {
+        clearTimeout(typingTimeout);
+        
+        socket.send(JSON.stringify({
+            type: 'typing',
+            is_typing: true
+        }));
+        
+        typingTimeout = setTimeout(() => {
+            socket.send(JSON.stringify({
+                type: 'typing',
+                is_typing: false
+            }));
+        }, 1000);
+    });
+    
+    // Scroll to bottom
+    function scrollToBottom() {
+        const container = document.getElementById('chat-messages');
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    // Toggle sidebar
+    function toggleSidebar() {
+        const sidebar = document.getElementById('members-sidebar');
+        sidebar.classList.toggle('hidden');
+    }
+    
+    // Toggle dropdown
+    function toggleDropdown(id) {
+        const dropdown = document.getElementById(id);
+        dropdown.classList.toggle('hidden');
+    }
+    
+    // Initialize
+    window.onload = function() {
+        connectWebSocket();
+        scrollToBottom();
+        
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', function(event) {
+            if (!event.target.matches('.dropdown-toggle')) {
+                const dropdowns = document.querySelectorAll('.dropdown-content');
+                dropdowns.forEach(dropdown => {
+                    if (!dropdown.classList.contains('hidden')) {
+                        dropdown.classList.add('hidden');
+                    }
+                });
+            }
+        });
+    };
+</script>
+{% endblock %}

@@ -1,0 +1,478 @@
+{% load static i18n %}
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE|default:'en' }}" dir="{% if LANGUAGE_CODE == 'ar' %}rtl{% else %}ltr{% endif %}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% trans "Sign Up" %} - Real-Time Chat</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: {% if LANGUAGE_CODE == 'ar' %}'Cairo', sans-serif{% else %}'Inter', sans-serif{% endif %};
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .card-shadow {
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+        }
+        
+        .input-focus:focus {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .password-strength {
+            height: 4px;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center gradient-bg p-4">
+    
+    <!-- Language & Theme Toggles -->
+    <div class="absolute top-4 right-4 z-10 flex space-x-3">
+        <!-- Language Switcher -->
+        <div class="flex items-center space-x-2 bg-white dark:bg-gray-800 rounded-full px-3 py-2 shadow-lg">
+            <i class="fas fa-globe text-gray-600 dark:text-gray-300"></i>
+            <select onchange="setLanguage(this.value)" 
+                    class="bg-transparent border-none focus:outline-none text-gray-700 dark:text-gray-300">
+                <option value="en" {% if LANGUAGE_CODE == 'en' %}selected{% endif %}>English</option>
+                <option value="ar" {% if LANGUAGE_CODE == 'ar' %}selected{% endif %}>العربية</option>
+            </select>
+        </div>
+        
+        <!-- Theme Toggle -->
+        <button onclick="toggleTheme()" 
+                class="p-3 bg-white dark:bg-gray-800 rounded-full shadow-lg">
+            <i id="theme-icon" class="fas fa-moon text-gray-600 dark:text-yellow-400"></i>
+        </button>
+    </div>
+
+    <!-- Back to Login -->
+    <a href="{% url 'login' %}" 
+       class="absolute top-4 left-4 z-10 p-3 bg-white dark:bg-gray-800 rounded-full shadow-lg hover:shadow-xl transition-shadow">
+        <i class="fas fa-arrow-left text-gray-600 dark:text-gray-300"></i>
+    </a>
+
+    <div class="w-full max-w-2xl">
+        <!-- Signup Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-2xl card-shadow overflow-hidden">
+            <!-- Header -->
+            <div class="p-8 text-center border-b border-gray-100 dark:border-gray-700">
+                <div class="w-20 h-20 bg-gradient-to-r from-green-500 to-teal-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <i class="fas fa-user-plus text-white text-3xl"></i>
+                </div>
+                
+                <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                    {% trans "Create Account" %}
+                </h1>
+                <p class="text-gray-600 dark:text-gray-400">
+                    {% trans "Join our real-time chat community" %}
+                </p>
+            </div>
+
+            <!-- Signup Form -->
+            <div class="p-8">
+                {% if form.errors %}
+                    <div class="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+                        <div class="flex items-center space-x-2 text-red-600 dark:text-red-400">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <span class="font-medium">
+                                {% trans "Please correct the errors below" %}
+                            </span>
+                        </div>
+                        <ul class="mt-2 text-sm text-red-500 dark:text-red-300 space-y-1">
+                            {% for field in form %}
+                                {% for error in field.errors %}
+                                    <li><i class="fas fa-chevron-right text-xs mr-1"></i> {{ error }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+
+                <form method="post" action="{% url 'signup' %}" id="signup-form">
+                    {% csrf_token %}
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- First Name -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                {% trans "First Name" %}
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}right-0 pr-3{% else %}left-0 pl-3{% endif %} flex items-center pointer-events-none">
+                                    <i class="fas fa-user text-gray-400"></i>
+                                </div>
+                                <input type="text" 
+                                       name="first_name"
+                                       class="w-full {% if LANGUAGE_CODE == 'ar' %}pr-10 pl-4{% else %}pl-10 pr-4{% endif %} py-3 border border-gray-300 dark:border-gray-600 rounded-lg input-focus bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                       placeholder="{% trans 'John' %}"
+                                       required>
+                            </div>
+                        </div>
+
+                        <!-- Last Name -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                {% trans "Last Name" %}
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}right-0 pr-3{% else %}left-0 pl-3{% endif %} flex items-center pointer-events-none">
+                                    <i class="fas fa-user text-gray-400"></i>
+                                </div>
+                                <input type="text" 
+                                       name="last_name"
+                                       class="w-full {% if LANGUAGE_CODE == 'ar' %}pr-10 pl-4{% else %}pl-10 pr-4{% endif %} py-3 border border-gray-300 dark:border-gray-600 rounded-lg input-focus bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                       placeholder="{% trans 'Doe' %}"
+                                       required>
+                            </div>
+                        </div>
+
+                        <!-- Username -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                {% trans "Username" %}
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}right-0 pr-3{% else %}left-0 pl-3{% endif %} flex items-center pointer-events-none">
+                                    <i class="fas fa-at text-gray-400"></i>
+                                </div>
+                                <input type="text" 
+                                       name="username"
+                                       class="w-full {% if LANGUAGE_CODE == 'ar' %}pr-10 pl-4{% else %}pl-10 pr-4{% endif %} py-3 border border-gray-300 dark:border-gray-600 rounded-lg input-focus bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                       placeholder="{% trans 'johndoe' %}"
+                                       required
+                                       oninput="checkUsername()">
+                                <div id="username-status" class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}left-0 pl-3{% else %}right-0 pr-3{% endif %} flex items-center hidden">
+                                    <i id="username-icon" class="fas fa-check text-green-500"></i>
+                                </div>
+                            </div>
+                            <p id="username-hint" class="mt-1 text-xs text-gray-500 dark:text-gray-400"></p>
+                        </div>
+
+                        <!-- Email -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                {% trans "Email Address" %}
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}right-0 pr-3{% else %}left-0 pl-3{% endif %} flex items-center pointer-events-none">
+                                    <i class="fas fa-envelope text-gray-400"></i>
+                                </div>
+                                <input type="email" 
+                                       name="email"
+                                       class="w-full {% if LANGUAGE_CODE == 'ar' %}pr-10 pl-4{% else %}pl-10 pr-4{% endif %} py-3 border border-gray-300 dark:border-gray-600 rounded-lg input-focus bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                       placeholder="{% trans 'john@example.com' %}"
+                                       required>
+                            </div>
+                        </div>
+
+                        <!-- Password -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                {% trans "Password" %}
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}right-0 pr-3{% else %}left-0 pl-3{% endif %} flex items-center pointer-events-none">
+                                    <i class="fas fa-lock text-gray-400"></i>
+                                </div>
+                                <input type="password" 
+                                       name="password1"
+                                       id="password1"
+                                       class="w-full {% if LANGUAGE_CODE == 'ar' %}pr-10 pl-4{% else %}pl-10 pr-4{% endif %} py-3 border border-gray-300 dark:border-gray-600 rounded-lg input-focus bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                       placeholder="{% trans 'Enter a strong password' %}"
+                                       required
+                                       oninput="checkPassword()">
+                                <button type="button" 
+                                        onclick="togglePassword('password1')"
+                                        class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}left-0 pl-3{% else %}right-0 pr-3{% endif %} flex items-center">
+                                    <i id="toggle-password1" class="fas fa-eye text-gray-400 hover:text-gray-600"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- Password Strength -->
+                            <div class="mt-2">
+                                <div class="flex space-x-1 mb-1">
+                                    <div id="strength-1" class="password-strength flex-1 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                    <div id="strength-2" class="password-strength flex-1 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                    <div id="strength-3" class="password-strength flex-1 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                    <div id="strength-4" class="password-strength flex-1 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                </div>
+                                <p id="strength-text" class="text-xs text-gray-500 dark:text-gray-400">
+                                    {% trans "Password strength: " %}<span id="strength-label">{% trans "Weak" %}</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Confirm Password -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                {% trans "Confirm Password" %}
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}right-0 pr-3{% else %}left-0 pl-3{% endif %} flex items-center pointer-events-none">
+                                    <i class="fas fa-lock text-gray-400"></i>
+                                </div>
+                                <input type="password" 
+                                       name="password2"
+                                       id="password2"
+                                       class="w-full {% if LANGUAGE_CODE == 'ar' %}pr-10 pl-4{% else %}pl-10 pr-4{% endif %} py-3 border border-gray-300 dark:border-gray-600 rounded-lg input-focus bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                       placeholder="{% trans 'Confirm your password' %}"
+                                       required
+                                       oninput="checkPasswordMatch()">
+                                <button type="button" 
+                                        onclick="togglePassword('password2')"
+                                        class="absolute inset-y-0 {% if LANGUAGE_CODE == 'ar' %}left-0 pl-3{% else %}right-0 pr-3{% endif %} flex items-center">
+                                    <i id="toggle-password2" class="fas fa-eye text-gray-400 hover:text-gray-600"></i>
+                                </button>
+                            </div>
+                            <p id="match-message" class="mt-1 text-xs"></p>
+                        </div>
+                    </div>
+
+                    <!-- Language Preference -->
+                    <div class="mt-6">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            {% trans "Preferred Language" %}
+                        </label>
+                        <div class="grid grid-cols-2 gap-4">
+                            <label class="flex items-center p-4 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <input type="radio" name="language" value="en" class="h-4 w-4 text-blue-600" checked>
+                                <div class="ml-3">
+                                    <span class="font-medium text-gray-700 dark:text-gray-300">English</span>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">English interface</p>
+                                </div>
+                            </label>
+                            <label class="flex items-center p-4 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <input type="radio" name="language" value="ar" class="h-4 w-4 text-blue-600">
+                                <div class="ml-3">
+                                    <span class="font-medium text-gray-700 dark:text-gray-300">العربية</span>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">واجهة عربية</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Terms and Conditions -->
+                    <div class="mt-6">
+                        <label class="flex items-start">
+                            <input type="checkbox" 
+                                   name="terms"
+                                   id="terms"
+                                   class="h-4 w-4 mt-1 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                   required>
+                            <span class="ml-3 text-sm text-gray-700 dark:text-gray-300">
+                                {% trans "I agree to the" %} 
+                                <a href="#" class="text-blue-600 dark:text-blue-400 hover:underline">{% trans "Terms of Service" %}</a> 
+                                {% trans "and" %} 
+                                <a href="#" class="text-blue-600 dark:text-blue-400 hover:underline">{% trans "Privacy Policy" %}</a>
+                            </span>
+                        </label>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" 
+                            id="submit-btn"
+                            class="w-full mt-8 bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-user-plus mr-2"></i>
+                        {% trans "Create Account" %}
+                    </button>
+                </form>
+
+                <!-- Already have account -->
+                <div class="mt-8 text-center">
+                    <p class="text-gray-600 dark:text-gray-400">
+                        {% trans "Already have an account?" %}
+                        <a href="{% url 'login' %}" class="font-medium text-blue-600 dark:text-blue-400 hover:underline ml-1">
+                            {% trans "Sign in here" %}
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme management
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+            
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                icon.className = 'fas fa-moon text-gray-600';
+                localStorage.theme = 'light';
+            } else {
+                html.classList.add('dark');
+                icon.className = 'fas fa-sun text-yellow-400';
+                localStorage.theme = 'dark';
+            }
+        }
+
+        // Set initial theme
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+            document.getElementById('theme-icon').className = 'fas fa-sun text-yellow-400';
+        }
+
+        // Password visibility toggle
+        function togglePassword(fieldId) {
+            const field = document.getElementById(fieldId);
+            const icon = document.getElementById(`toggle-${fieldId}`);
+            
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.className = 'fas fa-eye-slash text-gray-600';
+            } else {
+                field.type = 'password';
+                icon.className = 'fas fa-eye text-gray-400';
+            }
+        }
+
+        // Check password strength
+        function checkPassword() {
+            const password = document.getElementById('password1').value;
+            const strengthBars = [
+                document.getElementById('strength-1'),
+                document.getElementById('strength-2'),
+                document.getElementById('strength-3'),
+                document.getElementById('strength-4')
+            ];
+            const strengthLabel = document.getElementById('strength-label');
+            
+            let strength = 0;
+            
+            // Check length
+            if (password.length >= 8) strength += 1;
+            if (password.length >= 12) strength += 1;
+            
+            // Check complexity
+            if (/[A-Z]/.test(password)) strength += 1;
+            if (/[0-9]/.test(password)) strength += 1;
+            if (/[^A-Za-z0-9]/.test(password)) strength += 1;
+            
+            // Update strength bars
+            strengthBars.forEach((bar, index) => {
+                bar.className = `password-strength flex-1 rounded ${index < strength ? 
+                    (strength <= 2 ? 'bg-red-500' : strength <= 4 ? 'bg-yellow-500' : 'bg-green-500') : 
+                    'bg-gray-200 dark:bg-gray-700'}`;
+            });
+            
+            // Update label
+            const labels = ['{% trans "Very Weak" %}', '{% trans "Weak" %}', '{% trans "Fair" %}', 
+                           '{% trans "Good" %}', '{% trans "Strong" %}', '{% trans "Very Strong" %}'];
+            strengthLabel.textContent = labels[Math.min(strength, labels.length - 1)];
+            strengthLabel.className = strength <= 2 ? 'text-red-600' : strength <= 4 ? 'text-yellow-600' : 'text-green-600';
+            
+            checkPasswordMatch();
+        }
+
+        // Check password match
+        function checkPasswordMatch() {
+            const password1 = document.getElementById('password1').value;
+            const password2 = document.getElementById('password2').value;
+            const message = document.getElementById('match-message');
+            const submitBtn = document.getElementById('submit-btn');
+            
+            if (!password2) {
+                message.textContent = '';
+                message.className = 'mt-1 text-xs';
+                submitBtn.disabled = true;
+                return;
+            }
+            
+            if (password1 === password2) {
+                message.textContent = '{% trans "Passwords match!" %}';
+                message.className = 'mt-1 text-xs text-green-600';
+                submitBtn.disabled = false;
+            } else {
+                message.textContent = '{% trans "Passwords do not match" %}';
+                message.className = 'mt-1 text-xs text-red-600';
+                submitBtn.disabled = true;
+            }
+        }
+
+        // Check username availability (simulated)
+        function checkUsername() {
+            const username = document.querySelector('input[name="username"]').value;
+            const status = document.getElementById('username-status');
+            const icon = document.getElementById('username-icon');
+            const hint = document.getElementById('username-hint');
+            
+            if (username.length < 3) {
+                status.classList.add('hidden');
+                hint.textContent = '{% trans "Username must be at least 3 characters" %}';
+                hint.className = 'mt-1 text-xs text-red-500';
+                return;
+            }
+            
+            // Simulate availability check
+            const unavailableUsernames = ['admin', 'root', 'test', 'user'];
+            const isAvailable = !unavailableUsernames.includes(username.toLowerCase());
+            
+            if (isAvailable) {
+                status.classList.remove('hidden');
+                icon.className = 'fas fa-check text-green-500';
+                hint.textContent = '{% trans "Username is available" %}';
+                hint.className = 'mt-1 text-xs text-green-500';
+            } else {
+                status.classList.remove('hidden');
+                icon.className = 'fas fa-times text-red-500';
+                hint.textContent = '{% trans "Username is not available" %}';
+                hint.className = 'mt-1 text-xs text-red-500';
+            }
+        }
+
+        // Set language
+        function setLanguage(lang) {
+            fetch('/i18n/setlang/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value,
+                },
+                body: `language=${lang}`
+            }).then(() => {
+                window.location.reload();
+            });
+        }
+
+        // Form validation
+        document.getElementById('signup-form').addEventListener('submit', function(e) {
+            const terms = document.getElementById('terms');
+            
+            if (!terms.checked) {
+                e.preventDefault();
+                alert('{% trans "Please agree to the terms and conditions" %}');
+                return;
+            }
+            
+            const password1 = document.getElementById('password1').value;
+            const password2 = document.getElementById('password2').value;
+            
+            if (password1 !== password2) {
+                e.preventDefault();
+                alert('{% trans "Passwords do not match" %}');
+                return;
+            }
+            
+            // Show loading state
+            const btn = document.getElementById('submit-btn');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> {% trans "Creating Account..." %}';
+            btn.disabled = true;
+        });
+    </script>
+</body>
+</html>
